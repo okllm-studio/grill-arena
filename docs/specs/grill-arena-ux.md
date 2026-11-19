@@ -2,96 +2,96 @@
 label: ready-for-agent
 ---
 
-# Grill Arena : améliorations UX et documentation intégrée
+# Grill Arena: UX improvements and built-in documentation
 
-Vocabulaire : `GLOSSARY.md` à la racine du dépôt. Issue d'une Séance de grilling (12 Questions, 4 Étapes) menée sur grill-arena lui-même. Spec précédente : `docs/specs/grill-arena.md`.
+Vocabulary: `GLOSSARY.md` at the root of the repository. Stemming from a grilling Session (12 Questions, 4 Steps) run on grill-arena itself. Previous spec: `docs/specs/grill-arena.md`.
 
 ## Problem Statement
 
-Un Joueur ou un Animateur qui ouvre la page grill-arena ne sait pas quoi faire. Sans Séance, la page dit « En attente d'une Séance… » sans dire qu'il faut lancer le skill dans Claude Code. Les règles du jeu (Votes masqués, Commentaires transmis à Claude, Points) ne sont écrites nulle part dans la page. L'Animateur ne comprend pas le panneau « Clore l'Étape » (faut-il cocher les cases ?) ni ce qu'il doit faire ensuite. Le Joueur ne sait pas si son Vote ou son Commentaire est enregistré, ni ce qu'il attend. Le compteur de Votes ne se met à jour que chez l'Animateur, et les pages restent périmées sans que personne le sache. Un Joueur qui recharge en navigation privée est bloqué : son pseudo est déjà pris. Après une clôture, rien n'indique que Claude prépare la suite, et la page de fin n'affiche pas le Récapitulatif des décisions.
+A Player or a Facilitator who opens the grill-arena page does not know what to do. Without a Session, the page says "Waiting for a Session…" without saying that the skill must be launched in Claude Code. The rules of the game (hidden Votes, Comments passed on to Claude, Points) are written nowhere in the page. The Facilitator does not understand the "Close the Step" panel (should the boxes be ticked?) nor what to do next. The Player does not know whether their Vote or Comment is saved, nor what they are waiting for. The Vote counter only updates on the Facilitator's page, and pages go stale without anyone knowing. A Player who reloads in private browsing is stuck: their nickname is already taken. After a closing, nothing indicates that Claude is preparing the next Step, and the end page does not display the Summary of the decisions.
 
 ## Solution
 
-La page guide chacun selon son rôle et l'état de la Séance. Elle explique les règles à la demande, confirme chaque action de façon visible, se tient à jour toute seule, laisse un Joueur reprendre son pseudo, annonce que Claude prépare la suite et affiche le Récapitulatif en fin de Séance. Le README ouvre sur un « Démarrage rapide » pour l'Animateur.
+The page guides everyone according to their role and the state of the Session. It explains the rules on demand, confirms each action visibly, keeps itself up to date, lets a Player resume their nickname, announces that Claude is preparing the next Step and displays the Summary at the end of the Session. The README opens with a "Quick start" for the Facilitator.
 
 ## User Stories
 
-1. As a Joueur, I want to read « L'Animateur n'a pas encore lancé la Séance » when no Séance exists, so that I know I just have to wait and not that something is broken
-2. As an Animateur, I want an encart explaining that I must run `/grilling-arena` in Claude Code when no Séance exists, so that I know how to start
-3. As an Animateur, I want that encart to appear only on my page (the one opened with the jeton), so that Joueurs are not shown technical jargon
-4. As an Animateur opening the page with an invalid or missing jeton, I want an error message that tells me to take the Animateur link displayed in the terminal running the server, so that I can get a valid link
-5. As a Joueur, I want a « Règles » button in the header opening a panel, so that I can read how the game works without leaving the vote
-6. As a Joueur, I want the Règles panel to say that Votes stay hidden until the Étape is closed, so that I understand why I do not see others' choices
-7. As a Joueur, I want the Règles panel to say that Commentaires are sent to Claude and do not count as a Vote, so that I know what they are for
-8. As a Joueur, I want the Règles panel to explain Points, so that I understand the Tableau des scores
-9. As a Joueur, I want the Règles panel to say that the Proposition recommandée is retenue when nobody votes, so that abstaining is not a surprise
-10. As a Joueur, I want to close the Règles panel with the same button, so that it does not clutter the screen
-11. As an Animateur, I want a « Prochaine action » line that changes with the state of the Séance, so that I always know what to do next
-12. As an Animateur, I want the line to say « Attendre que Claude publie la première Étape » before the first Étape, so that I do not look for a button that does not exist
-13. As an Animateur, I want the line to say « Clore l'Étape quand tout le monde a voté » while an Étape is open, so that I know when to act
-14. As an Animateur, I want the line to say « Claude prépare la suite » after a closure, so that I do not wait for a button
-15. As an Animateur, I want the « Clore l'Étape » panel to explain in one sentence that I only tick a Question when no Proposition fits, so that I do not tick boxes by default
-16. As an Animateur, I want each checkbox labelled « Aucune Proposition ne convient : la reposer » with the Question title and vote count, so that its effect is unambiguous
-17. As an Animateur, I want that leaving every box unticked is clearly the normal case, so that I can close the Étape without hesitation
-18. As an Animateur, I want ex æquo to be explained when closure is refused (which Question, why I choose), so that I can resolve them
-19. As a Joueur, I want a short message « Vote enregistré, modifiable jusqu'à la clôture » after I vote, so that I know my choice counts and can be changed
-20. As a Joueur, I want a message « En attente de la clôture » once I have answered every Question, so that I know I have nothing more to do
-21. As a Joueur, I want a message « Étape close, Claude prépare la suite » after a closure, so that I know the game continues
-22. As a Joueur, I want my Commentaire to be saved automatically when I leave the field, so that I never lose it by forgetting a button
-23. As a Joueur, I want « ✓ Enregistré » shown next to my Commentaire once saved, so that I see the result where I acted
-24. As a Joueur, I want « modifications non enregistrées » shown while my Commentaire differs from the saved one, so that I know its state
-25. As a Joueur, I want a Commentaire emptied and left to be removed, so that I can retract it
-26. As a Joueur, I want the « x/y ont voté » counter to update on my page without reloading, so that I see how the group is progressing
-27. As a Joueur, I want my page to refresh after each of my own actions, so that I immediately see the effect of my Vote
-28. As a Joueur, I want my page to refresh itself about every 5 seconds while open, so that a new Étape or a closure appears even if the real-time stream does not reach me
-29. As a Joueur behind a tunnel, I want the page to work even if the real-time stream is blocked or delayed, so that I am not stuck on a stale Étape
-30. As a Joueur, I want refreshing to keep my typed Commentaire and my focus, so that I am not interrupted
-31. As a Joueur who lost my identity (private browsing, cleared data, new device), I want to be offered « C'est moi, reprendre ce pseudo » when my pseudo exists, so that I can come back to the Séance
-32. As a Joueur resuming a pseudo, I want to see my previous Votes and Commentaires for the open Étape, so that I continue where I stopped
-33. As a Joueur choosing a new pseudo, I want a clear refusal if it is empty, so that I know what to fix
-34. As a Joueur, I want the Récapitulatif of the Séance shown under the podium at the end, so that I find what was decided
-35. As an Animateur, I want the Récapitulatif to be visible on my page as well, so that I can copy it
-36. As a Joueur on a phone, I want touch targets of at least 44 px, so that I vote without mis-tapping
-37. As a Joueur on a phone, I want the Tableau des scores to scroll horizontally instead of overflowing the page, so that the layout stays intact
-38. As a Joueur using a keyboard or a screen reader, I want labelled fields and a visible focus, so that I can use every control
-39. As a Joueur, I want readable contrasts for badges, buttons and bars, so that I read results in any light
-40. As a new Animateur, I want a « Démarrage rapide » at the top of the README (installation, `make tunnel`, `make start`, `/grilling-arena`, sharing the URL), so that I can run a Séance without reading the whole document
+1. As a Player, I want to read "The Facilitator has not started the Session yet" when no Session exists, so that I know I just have to wait and not that something is broken
+2. As a Facilitator, I want a box explaining that I must run `/grilling-arena` in Claude Code when no Session exists, so that I know how to start
+3. As a Facilitator, I want that box to appear only on my page (the one opened with the token), so that Players are not shown technical jargon
+4. As a Facilitator opening the page with an invalid or missing token, I want an error message that tells me to take the Facilitator link displayed in the terminal running the server, so that I can get a valid link
+5. As a Player, I want a "Rules" button in the header opening a panel, so that I can read how the game works without leaving the vote
+6. As a Player, I want the Rules panel to say that Votes stay hidden until the Step is closed, so that I understand why I do not see others' choices
+7. As a Player, I want the Rules panel to say that Comments are sent to Claude and do not count as a Vote, so that I know what they are for
+8. As a Player, I want the Rules panel to explain Points, so that I understand the Scoreboard
+9. As a Player, I want the Rules panel to say that the Recommended option is selected when nobody votes, so that abstaining is not a surprise
+10. As a Player, I want to close the Rules panel with the same button, so that it does not clutter the screen
+11. As a Facilitator, I want a "Next action" line that changes with the state of the Session, so that I always know what to do next
+12. As a Facilitator, I want the line to say "Wait for Claude to publish the first Step" before the first Step, so that I do not look for a button that does not exist
+13. As a Facilitator, I want the line to say "Close the Step when everyone has voted" while a Step is open, so that I know when to act
+14. As a Facilitator, I want the line to say "Claude is preparing the next Step" after a closing, so that I do not wait for a button
+15. As a Facilitator, I want the "Close the Step" panel to explain in one sentence that I only tick a Question when no Option fits, so that I do not tick boxes by default
+16. As a Facilitator, I want each checkbox labelled "No Option fits: re-ask it" with the Question title and vote count, so that its effect is unambiguous
+17. As a Facilitator, I want that leaving every box unticked is clearly the normal case, so that I can close the Step without hesitation
+18. As a Facilitator, I want ties to be explained when closing is refused (which Question, why I choose), so that I can resolve them
+19. As a Player, I want a short message "Vote saved, editable until closing" after I vote, so that I know my choice counts and can be changed
+20. As a Player, I want a message "Waiting for closing" once I have answered every Question, so that I know I have nothing more to do
+21. As a Player, I want a message "Step closed, Claude is preparing the next Step" after a closing, so that I know the game continues
+22. As a Player, I want my Comment to be saved automatically when I leave the field, so that I never lose it by forgetting a button
+23. As a Player, I want "✓ Saved" shown next to my Comment once saved, so that I see the result where I acted
+24. As a Player, I want "unsaved changes" shown while my Comment differs from the saved one, so that I know its state
+25. As a Player, I want a Comment emptied and left to be removed, so that I can retract it
+26. As a Player, I want the "x/y voted" counter to update on my page without reloading, so that I see how the group is progressing
+27. As a Player, I want my page to refresh after each of my own actions, so that I immediately see the effect of my Vote
+28. As a Player, I want my page to refresh itself about every 5 seconds while open, so that a new Step or a closing appears even if the real-time stream does not reach me
+29. As a Player behind a tunnel, I want the page to work even if the real-time stream is blocked or delayed, so that I am not stuck on a stale Step
+30. As a Player, I want refreshing to keep my typed Comment and my focus, so that I am not interrupted
+31. As a Player who lost my identity (private browsing, cleared data, new device), I want to be offered "It's me, resume this nickname" when my nickname exists, so that I can come back to the Session
+32. As a Player resuming a nickname, I want to see my previous Votes and Comments for the open Step, so that I continue where I stopped
+33. As a Player choosing a new nickname, I want a clear refusal if it is empty, so that I know what to fix
+34. As a Player, I want the Summary of the Session shown under the podium at the end, so that I find what was decided
+35. As a Facilitator, I want the Summary to be visible on my page as well, so that I can copy it
+36. As a Player on a phone, I want touch targets of at least 44 px, so that I vote without mis-tapping
+37. As a Player on a phone, I want the Scoreboard to scroll horizontally instead of overflowing the page, so that the layout stays intact
+38. As a Player using a keyboard or a screen reader, I want labelled fields and a visible focus, so that I can use every control
+39. As a Player, I want readable contrasts for badges, buttons and bars, so that I read results in any light
+40. As a new Facilitator, I want a "Quick start" at the top of the README (installation, `make tunnel`, `make start`, `/grilling-arena`, sharing the URL), so that I can run a Session without reading the whole document
 
 ## Implementation Decisions
 
-- **État de la page sans Séance.** Le Joueur et l'Animateur voient des messages différents. L'Animateur est celui dont la page est ouverte avec le jeton ; l'encart cite le skill `/grilling-arena`.
-- **Message de jeton invalide.** Il renvoie vers le lien Animateur affiché dans le terminal du serveur.
-- **Panneau « Règles ».** Un bouton dans l'en-tête, à côté du Tableau des scores, l'ouvre et le ferme. Son contenu reprend la définition des Votes, Commentaires, Points et de la Proposition retenue du glossaire (il n'y a pas de Bonus), sans les redéfinir autrement. Il ne change pas selon l'état de la Séance.
-- **Ligne « Prochaine action » (Animateur).** Elle se déduit de l'état visible : pas d'Étape, Étape ouverte, Étape close non terminée, Séance terminée.
-- **« Claude prépare la suite ».** État déduit : Étape close et Séance non terminée, sans Étape publiée en attente d'Ouverture (voir `docs/specs/grill-arena-scoring.md`). Il apparaît côté Joueur et côté Animateur. Aucune route ni modification du skill n'est ajoutée : le serveur ne peut pas observer Claude, et la déduction ne peut être ni fausse ni oubliée. Un message explicite envoyé par le skill a été écarté.
-- **Panneau « Clore l'Étape ».** Une phrase d'aide au-dessus des cases, et le libellé « Aucune Proposition ne convient : la reposer ». La mécanique de clôture ne change pas.
-- **Messages d'état du Joueur.** Courts, affichés près des Questions et non en bas de page : Vote enregistré (modifiable jusqu'à la clôture), en attente de la clôture, Étape close.
-- **Commentaires.** L'enregistrement se déclenche à la frappe (avec délai), à la sortie du champ et à la fermeture de la page (voir `docs/specs/grill-arena-scoring.md`). Le bouton « Enregistrer le commentaire » disparaît. L'indication « ✓ Enregistré » ou « modifications non enregistrées » s'affiche à côté du champ, pas dans le message global. Un Commentaire vidé est supprimé, comme aujourd'hui côté serveur.
-- **Mise à jour des pages.** En plus du flux temps réel, chaque page se rafraîchit après toute action du Joueur et par un relevé périodique d'environ 5 secondes. Le relevé doit préserver la saisie en cours et le focus, comme le rendu actuel. Le flux temps réel est conservé.
-- **Reprise de pseudo.** L'API d'inscription accepte une demande de reprise explicite pour un pseudo existant et renvoie alors l'identité de ce Joueur. Sans cette demande, le refus des doublons reste. La page propose « C'est moi, reprendre ce pseudo » quand elle reçoit ce refus. Aucun secret n'est exigé : le groupe est restreint, l'URL de la Séance étant déjà le seul secret ; ce choix est assumé, y compris le fait qu'un participant peut prendre le pseudo d'un autre.
-- **Récapitulatif en fin de Séance.** L'état de la Séance expose le Récapitulatif quand la Séance est terminée, pour tous. La page le rend (Markdown) sous le podium, y compris sur la page Animateur. Le contenu est celui que l'API de fin renvoie déjà à Claude.
-- **Mobile et accessibilité.** Zones tactiles d'au moins 44 px, tableau des scores défilant horizontalement sur petit écran, champs étiquetés, focus visible, contrastes suffisants. Pas de refonte de la mise en page.
-- **README.** Un « Démarrage rapide » en tête (installation, `make tunnel`, `make start`, `/grilling-arena`, partage de l'URL). Pas de page d'aide servie par le serveur. Les passages du README et de la spec `docs/specs/grill-arena.md` que ces changements rendent obsolètes sont mis à jour.
+- **Page state without a Session.** The Player and the Facilitator see different messages. The Facilitator is the one whose page is opened with the token; the box cites the `/grilling-arena` skill.
+- **Invalid token message.** It points to the Facilitator link displayed in the server's terminal.
+- **"Rules" panel.** A button in the header, next to the Scoreboard, opens and closes it. Its content restates the glossary's definition of Votes, Comments, Points and the Selected option (there is no Bonus), without redefining them otherwise. It does not change with the state of the Session.
+- **"Next action" line (Facilitator).** It is deduced from the visible state: no Step, open Step, closed Step with the Session not ended, Session ended.
+- **"Claude is preparing the next Step".** Deduced state: Step closed and Session not ended, with no published Step waiting for Opening (see `docs/specs/grill-arena-scoring.md`). It appears on the Player side and on the Facilitator side. No route and no change to the skill is added: the server cannot observe Claude, and the deduction can be neither wrong nor forgotten. An explicit message sent by the skill was ruled out.
+- **"Close the Step" panel.** A help sentence above the checkboxes, and the label "No Option fits: re-ask it". The closing mechanics do not change.
+- **Player status messages.** Short, displayed near the Questions and not at the bottom of the page: Vote saved (editable until closing), waiting for closing, Step closed.
+- **Comments.** Saving is triggered on typing (with a delay), on leaving the field and on closing the page (see `docs/specs/grill-arena-scoring.md`). There is no "Save comment" button. The "✓ Saved" or "unsaved changes" indication is displayed next to the field, not in the global message. An emptied Comment is deleted on the server side.
+- **Page updates.** In addition to the real-time stream, each page refreshes after any Player action and through a periodic poll of about 5 seconds. The poll must preserve the input in progress and the focus. The real-time stream is kept.
+- **Nickname resumption.** The join API accepts an explicit resume request for an existing nickname and then returns that Player's identity. Without that request, the refusal of duplicates remains. The page offers "It's me, resume this nickname" when it receives that refusal. No secret is required: the group is small, the Session URL already being the only secret; this choice is deliberate, including the fact that a participant can take another's nickname.
+- **Summary at the end of the Session.** The Session state exposes the Summary when the Session is ended, to everyone. The page renders it (Markdown) under the podium, including on the Facilitator page. The content is the one the end API already returns to Claude.
+- **Mobile and accessibility.** Touch targets of at least 44 px, Scoreboard scrolling horizontally on small screens, labelled fields, visible focus, sufficient contrasts. No redesign of the layout.
+- **README.** A "Quick start" at the top (installation, `make tunnel`, `make start`, `/grilling-arena`, sharing the URL). No help page served by the server.
 
 ## Testing Decisions
 
-- Un bon test passe par une interface publique et vérifie un comportement observable (réponse HTTP, état visible par un Joueur). Il ne vérifie jamais la structure interne de l'état.
-- **Couture unique : l'API HTTP**, déjà testée en processus avec un serveur sur port libre, un dossier temporaire et un jeton imposé. Elle est étendue pour :
-  - la reprise de pseudo : un pseudo existant sans demande de reprise reste refusé (409) ; avec la demande, l'identité du Joueur est renvoyée et ses Votes de l'Étape ouverte sont visibles dans sa vue ; un pseudo vide reste refusé ;
-  - le Récapitulatif dans l'état : absent tant que la Séance n'est pas terminée, présent pour tout Joueur une fois terminée.
-- **La page n'a pas de test automatisé** : elle est en JavaScript natif, sans infrastructure de test, et ajouter un navigateur ou extraire un module de vues a été écarté. Elle se vérifie à la main, avec une checklist suivant les user stories : état sans Séance (Joueur et Animateur), panneau Règles, ligne « Prochaine action » aux quatre états, panneau de clôture, messages d'état, auto-enregistrement des Commentaires, mise à jour sans rechargement derrière le tunnel, reprise de pseudo, Récapitulatif de fin, affichage sur téléphone.
-- Prior art : `test/api.test.js` (cycle complet avec plusieurs Joueurs), même démarrage de serveur et mêmes helpers de requête.
+- A good test goes through a public interface and checks an observable behavior (HTTP response, state visible to a Player). It never checks the internal structure of the state.
+- **Single seam: the HTTP API**, already tested in-process with a server on a free port, a temporary folder and an imposed token. It is extended for:
+  - nickname resumption: an existing nickname without a resume request remains refused (409); with the request, the Player's identity is returned and their Votes of the open Step are visible in their view; an empty nickname remains refused;
+  - the Summary in the state: absent as long as the Session is not ended, present for any Player once ended.
+- **The page has no automated test**: it is in native JavaScript, with no test infrastructure, and adding a browser or extracting a views module was ruled out. It is checked by hand, with a checklist following the user stories: state without a Session (Player and Facilitator), Rules panel, "Next action" line in the four states, closing panel, status messages, Comment auto-save, update without reloading behind the tunnel, nickname resumption, end Summary, display on a phone.
+- Prior art: `test/api.test.js` (full cycle with several Players), same server startup and same request helpers.
 
 ## Out of Scope
 
-- Un message explicite « Claude réfléchit » envoyé par le skill.
-- Un code personnel ou un mot de passe pour la reprise de pseudo.
-- Une page d'aide `/aide` servie par le serveur.
-- Les tests automatisés de la page (navigateur ou module de vues).
-- Une refonte graphique ou une nouvelle mise en page de la page.
+- An explicit "Claude is thinking" message sent by the skill.
+- A personal code or a password for nickname resumption.
+- A help page served by the server.
+- Automated tests of the page (browser or views module).
+- A graphic redesign or a new layout of the page.
 
 ## Further Notes
 
-- La spec précédente prévoit déjà que la page de fin affiche un Récapitulatif ; l'implémentation actuelle ne montre que le podium. Cette spec comble l'écart.
-- Les messages du Joueur (« Claude prépare la suite ») et celui de l'Animateur reposent sur le même état déduit.
-- Reste à vérifier en conditions réelles (téléphones, tunnel) que le relevé périodique suffit quand le flux temps réel ne passe pas.
+- The previous spec already provides that the end page displays a Summary; the current implementation only shows the podium. This spec closes the gap.
+- The Player's message ("Claude is preparing the next Step") and the Facilitator's rely on the same deduced state.
+- Still to check in real conditions (phones, tunnel) that the periodic poll is enough when the real-time stream does not get through.

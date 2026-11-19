@@ -2,143 +2,143 @@
 label: ready-for-agent
 ---
 
-# Grill Arena : séance de grilling multijoueur
+# Grill Arena: multiplayer grilling Session
 
-Vocabulaire : `GLOSSARY.md` à la racine du dépôt.
+Vocabulary: `GLOSSARY.md` at the root of the repository.
 
 ## Problem Statement
 
-Un grilling avec Claude se joue dans un terminal, face à une seule personne. Quand plusieurs personnes doivent trancher ensemble (une équipe autour d'un écran, ou chacun sur son poste), une seule tape les réponses. Les autres donnent leur avis à l'oral et cet avis se perd. Personne n'est incité à s'écarter de la recommandation de Claude, alors que c'est souvent là que le cadrage gagne en qualité. On n'a pas non plus de vue d'ensemble de l'avancement de la Séance.
+A grilling with Claude is played in a terminal, in front of a single person. When several people have to decide together (a team around a screen, or everyone at their own desk), only one person types the answers. The others give their opinion out loud and that opinion is lost. Nobody is encouraged to depart from Claude's recommendation, although that is often where the framing gains in quality. There is also no overview of how far the Session has progressed.
 
 ## Solution
 
-Une page web servie en local, que chaque Joueur ouvre dans son navigateur. Claude y publie chaque Étape du grilling au lieu de l'écrire au terminal. Les Joueurs votent pour une Proposition de chaque Question (ou s'abstiennent) et peuvent laisser un Commentaire. L'Animateur ouvre puis clôt chaque Étape (un Co-animateur peut le faire à sa place). La Proposition retenue est celle qui a le plus de Votes ; un partage des Votes est renvoyé à l'oral. Claude reçoit les résultats et les Commentaires, puis construit l'Étape suivante. Chaque Joueur gagne un Point quand il a voté pour la Proposition retenue. L'avancement s'affiche à chaque clôture ; le Tableau et les statistiques de participation sont publiés en fin de Séance. En fin de Séance, la page affiche un podium et un Récapitulatif des décisions, qui sert d'entrée à `to-spec`.
+A web page served locally, which each Player opens in their browser. Claude publishes each Step of the grilling there instead of writing it in the terminal. Players vote for an Option of each Question (or abstain) and can leave a Comment. The Facilitator opens then closes each Step (a Co-facilitator can do it in their place). The Selected option is the one with the most Votes; a split vote is sent back to the table, out loud. Claude receives the results and the Comments, then builds the next Step. Each Player earns a Point when they voted for the Selected option. Progress is displayed at each closing; the Scoreboard and the participation statistics are published at the end of the Session. At the end of the Session, the page displays a podium and a Summary of the decisions, which feeds `to-spec`.
 
 ## User Stories
 
-### Animateur : mise en place
-1. En tant qu'Animateur, je veux lancer une Séance avec un skill `grilling-arena`, pour que les Joueurs reçoivent les Questions sur la page plutôt que dans mon terminal.
-2. En tant qu'Animateur, je veux que le skill démarre le serveur s'il ne tourne pas déjà, pour ne rien avoir à lancer à la main.
-3. En tant qu'Animateur, je veux que la page Animateur affiche l'URL du réseau local et un QR code, pour que les Joueurs rejoignent en quelques secondes.
-4. En tant qu'Animateur, je veux une URL Animateur protégée par un jeton aléatoire, pour qu'un Joueur ne puisse pas clore une Étape par erreur.
-5. En tant qu'Animateur, je veux que le jeton s'affiche dans le terminal au démarrage du serveur, pour ouvrir ma page sans le chercher.
-6. En tant qu'Animateur, je veux que démarrer une nouvelle Séance archive la précédente, pour ne jamais mélanger deux grillings.
+### Facilitator: setup
+1. As a Facilitator, I want to start a Session with a `grilling-arena` skill, so that the Players receive the Questions on the page rather than in my terminal.
+2. As a Facilitator, I want the skill to start the server if it is not already running, so that I have nothing to launch by hand.
+3. As a Facilitator, I want the Facilitator page to display the local network URL and a QR code, so that the Players join within seconds.
+4. As a Facilitator, I want a Facilitator URL protected by a random token, so that a Player cannot close a Step by mistake.
+5. As a Facilitator, I want the token to be displayed in the terminal when the server starts, so that I can open my page without looking for it.
+6. As a Facilitator, I want starting a new Session to archive the previous one, so that two grillings are never mixed.
 
-### Joueur : rejoindre
-7. En tant que Joueur, je veux rejoindre en choisissant un pseudo, sans compte ni mot de passe, pour participer tout de suite.
-8. En tant que Joueur, je veux que mon navigateur se souvienne de mon pseudo, pour retrouver ma place et mon score après un rechargement.
-9. En tant que Joueur, je veux qu'on me refuse un pseudo déjà pris dans la Séance, sauf si je demande explicitement à le reprendre, pour ne pas être confondu avec quelqu'un d'autre au Tableau des scores tout en pouvant revenir après avoir perdu mon identité.
-10. En tant que Joueur arrivé en cours de Séance, je veux pouvoir voter dès l'Étape ouverte, en partant de 0, pour participer même en retard.
+### Player: joining
+7. As a Player, I want to join by choosing a nickname, with no account or password, so that I can take part right away.
+8. As a Player, I want my browser to remember my nickname, so that I find my place and my score after a reload.
+9. As a Player, I want a nickname already taken in the Session to be refused, unless I explicitly ask to resume it, so that I am not confused with someone else on the Scoreboard while still being able to come back after losing my identity.
+10. As a Player who arrives mid-Session, I want to be able to vote as soon as the Step is open, starting from 0, so that I can take part even when late.
 
-### Joueur : voter
-11. En tant que Joueur, je veux voir chaque Question de l'Étape avec son texte rendu en Markdown, pour lire le raisonnement de Claude comme au terminal.
-12. En tant que Joueur, je veux voir quelle Proposition Claude recommande, pour décider en connaissance de cause.
-13. En tant que Joueur, je veux voter pour une seule Proposition par Question, pour exprimer clairement mon choix.
-14. En tant que Joueur, je veux pouvoir m'abstenir sur une Question, pour ne pas me prononcer sur un sujet que je ne maîtrise pas.
-15. En tant que Joueur, je veux changer mon Vote ou revenir à l'Abstention tant que l'Étape est ouverte, pour corriger un clic ou changer d'avis.
-16. En tant que Joueur, je veux ajouter un Commentaire libre à une Question, que j'aie voté ou non, pour signaler une nuance ou une Proposition manquante.
-17. En tant que Joueur, je veux modifier ou effacer mon Commentaire tant que l'Étape est ouverte.
-18. En tant que Joueur, je veux que les Votes et Commentaires des autres restent masqués jusqu'à la clôture, pour voter sans être influencé.
-19. En tant que Joueur, je veux voir combien de Joueurs ont déjà voté sur chaque Question, pour savoir où en est le groupe.
-20. En tant que Joueur, je veux que la page se mette à jour toute seule (nouvelle Étape, clôture, compteurs), pour ne jamais avoir à la recharger.
+### Player: voting
+11. As a Player, I want to see each Question of the Step with its text rendered as Markdown, so that I read Claude's reasoning as in the terminal.
+12. As a Player, I want to see which Option Claude recommends, so that I decide with full knowledge.
+13. As a Player, I want to vote for a single Option per Question, so that I express my choice clearly.
+14. As a Player, I want to be able to abstain on a Question, so that I do not take a stand on a subject I do not master.
+15. As a Player, I want to change my Vote or go back to Abstention while the Step is open, so that I can fix a misclick or change my mind.
+16. As a Player, I want to add a free Comment to a Question, whether or not I voted, so that I can point out a nuance or a missing Option.
+17. As a Player, I want to edit or erase my Comment while the Step is open.
+18. As a Player, I want the others' Votes and Comments to stay hidden until closing, so that I vote without being influenced.
+19. As a Player, I want to see how many Players have already voted on each Question, so that I know where the group stands.
+20. As a Player, I want the page to update by itself (new Step, closing, counters), so that I never have to reload it.
 
-### Animateur : clore une Étape
-21. En tant qu'Animateur, je veux voir le compteur « X/N ont voté » de chaque Question, pour juger quand clore.
-22. En tant qu'Animateur, je veux clore l'Étape d'un clic, pour révéler les résultats et rendre la main à Claude.
-23. En tant qu'Animateur, je veux qu'au moment de clore on me demande de départager les ex æquo qui ne contiennent pas la Proposition recommandée, pour que chaque Question soit tranchée.
-24. En tant qu'Animateur, je veux pouvoir marquer une Question « à reposer » quand les Commentaires montrent qu'aucune Proposition ne convient, pour que Claude la reformule.
-25. En tant qu'Animateur, je veux pouvoir voter comme n'importe quel Joueur, puisque je fais aussi partie du groupe.
+### Facilitator: closing a Step
+21. As a Facilitator, I want to see the "X/N voted" counter of each Question, so that I can judge when to close.
+22. As a Facilitator, I want to close the Step with one click, so that the results are revealed and Claude takes over again.
+23. As a Facilitator, I want to be asked, when closing, to break the ties that do not contain the Recommended option, so that every Question is settled.
+24. As a Facilitator, I want to be able to mark a Question "to re-ask" when the Comments show that no Option fits, so that Claude reformulates it.
+25. As a Facilitator, I want to be able to vote like any Player, since I am also part of the group.
 
-### Arbitrage et score
-26. En tant que Joueur, je veux que la Proposition qui a le plus de Votes soit retenue, pour que le choix du groupe s'impose.
-27. En tant que Joueur, je veux qu'en l'absence de tout Vote ce soit la recommandée qui soit retenue, sans Point pour personne, pour que la Séance avance quand même.
-28. En tant que Joueur, je veux qu'en cas d'ex æquo incluant la recommandée ce soit elle qui l'emporte, pour une règle prévisible.
-29. En tant que Joueur, je veux gagner un Point quand j'ai voté pour la Proposition retenue, pour être récompensé d'avoir vu juste.
-31. En tant que Joueur, je veux qu'une Abstention ou un Vote pour une autre Proposition ne me coûte rien, pour voter sans crainte.
-32. En tant que Joueur, je veux qu'une Question à reposer ne rapporte de Point à personne, puisqu'elle n'a pas été tranchée.
+### Arbitration and score
+26. As a Player, I want the Option with the most Votes to be selected, so that the group's choice prevails.
+27. As a Player, I want the Recommended option to be selected when nobody voted at all, with no Point for anyone, so that the Session moves on anyway.
+28. As a Player, I want the Recommended option to win a tie that includes it, for a predictable rule.
+29. As a Player, I want to earn a Point when I voted for the Selected option, so that I am rewarded for being right.
+31. As a Player, I want an Abstention or a Vote for another Option to cost me nothing, so that I vote without fear.
+32. As a Player, I want a Question to re-ask to earn no Point for anyone, since it was not settled.
 
-### Révélation et avancement
-33. En tant que Joueur, je veux qu'à la clôture la page révèle pour chaque Question la répartition des Votes, la Proposition retenue (ou « à reposer ») et les Commentaires avec leur auteur, pour comprendre la décision.
-35. En tant que Joueur, je veux voir le Tableau des scores à la fin de la Séance (ou quand l'Animateur le publie), pour ne pas orienter mes Votes pendant la Séance.
-36. En tant que Joueur, je veux voir le numéro de l'Étape, le nombre de Questions tranchées et une estimation des Questions à venir, pour savoir où en est la Séance.
+### Reveal and progress
+33. As a Player, I want the page, at closing, to reveal for each Question the distribution of the Votes, the Selected option (or "to re-ask") and the Comments with their author, so that I understand the decision.
+35. As a Player, I want to see the Scoreboard at the end of the Session (or when the Facilitator publishes it), so that I do not steer my Votes during the Session.
+36. As a Player, I want to see the Step number, the number of Questions settled and an estimate of the Questions to come, so that I know where the Session stands.
 
 ### Claude
-37. En tant que Claude, je veux publier une Étape (numéro, avancement, Questions avec Propositions fermées et une recommandée), pour la soumettre au vote.
-38. En tant que Claude, je veux qu'une Étape mal formée soit refusée avec un message explicite (pas de recommandée, recommandée absente des Propositions, Question sans Proposition), pour la corriger avant que les Joueurs la voient.
-39. En tant que Claude, je veux attendre la clôture avec une requête en long-poll que je lance en arrière-plan, pour être réveillé à la clôture sans interroger le serveur en boucle.
-40. En tant que Claude, je veux recevoir pour chaque Question son statut (retenue ou à reposer), la Proposition retenue, la répartition des Votes et les Commentaires, pour construire l'Étape suivante.
-41. En tant que Claude, je veux que mes requêtes exigent le jeton de l'Animateur, pour qu'un Joueur ne puisse pas publier d'Étape.
-42. En tant que Claude, je veux déclarer la fin de la Séance, pour déclencher le podium et obtenir le Récapitulatif.
-43. En tant que Claude, je veux recevoir le Récapitulatif en Markdown (Questions et Propositions retenues, par Étape), pour enchaîner sur `to-spec`.
-44. En tant que Claude, je veux que le skill `grilling-arena` applique les mêmes règles de frontière que `grilling`, en publiant au lieu d'écrire au terminal, pour garder la même rigueur.
-45. En tant que Claude, je veux que le skill me rappelle de traiter les Commentaires comme des réponses « autre », pour ouvrir les branches qu'ils révèlent.
+37. As Claude, I want to publish a Step (number, progress, Questions with closed Options and one recommended), so that I submit it to the vote.
+38. As Claude, I want a malformed Step to be refused with an explicit message (no recommended option, recommended option missing from the Options, Question without Option), so that I fix it before the Players see it.
+39. As Claude, I want to wait for the closing with a long-poll request that I launch in the background, so that I am woken at closing without polling the server in a loop.
+40. As Claude, I want to receive for each Question its status (selected or to re-ask), the Selected option, the distribution of the Votes and the Comments, so that I build the next Step.
+41. As Claude, I want my requests to require the Facilitator's token, so that a Player cannot publish a Step.
+42. As Claude, I want to declare the end of the Session, so that the podium is triggered and I get the Summary.
+43. As Claude, I want to receive the Summary as Markdown (Questions and Selected options, per Step), so that I can move on to `to-spec`.
+44. As Claude, I want the `grilling-arena` skill to apply the same frontier rules as `grilling`, publishing instead of writing in the terminal, so that the same rigor is kept.
+45. As Claude, I want the skill to remind me to treat Comments as "other" answers, so that I open the branches they reveal.
 
-### Fin et reprise
-46. En tant que Joueur, je veux voir un podium et le Récapitulatif en fin de Séance, pour conclure le jeu et retrouver ce qui a été décidé.
-47. En tant qu'Animateur, je veux que la Séance soit sauvegardée sur disque à chaque clôture et rechargée au redémarrage du serveur, pour ne perdre ni décisions ni scores en cas de plantage.
-48. En tant qu'Animateur, je veux que chaque Séance ait son fichier sur disque, pour garder une trace des grillings passés.
+### End and resumption
+46. As a Player, I want to see a podium and the Summary at the end of the Session, so that I conclude the game and find what was decided.
+47. As a Facilitator, I want the Session to be saved to disk at each closing and reloaded when the server restarts, so that neither decisions nor scores are lost in a crash.
+48. As a Facilitator, I want each Session to have its own file on disk, so that I keep a trace of past grillings.
 
 ## Implementation Decisions
 
-- **Dépôt dédié** `grill-arena`, en Node.js et Express, sans étape de build. Le serveur écoute sur `0.0.0.0`, port 4242 par défaut et configurable.
-- **Modules** :
-  - **Arbitrage** (pur, sans E/S) : à partir d'une Question, des Votes, des départages et des Questions à reposer, il détermine le statut de la Question, la Proposition retenue et les ex æquo à départager. À partir des résultats d'une Étape et des Joueurs, il calcule les gains de chacun. Le barème vaut 1 Point par défaut, et il est configurable. Une égalité entre Propositions est renvoyée à l'oral (Question à reposer), sauf après une repose où l'Animateur tranche.
-  - **Séance** : l'état en mémoire (Joueurs, Étapes, Votes, Commentaires, Tableau des scores). Il valide les Étapes publiées, applique les règles de masquage et produit le Récapitulatif. Il s'appuie sur l'Arbitrage.
-  - **Stockage** : un fichier JSON par Séance, écrit à chaque clôture et au démarrage ou à la fin de la Séance. La dernière Séance non terminée est rechargée au démarrage. Le dossier est configurable.
-  - **API HTTP** : un fin adaptateur sur la Séance, plus un flux SSE qui diffuse les changements (nouvelle Étape, compteurs, clôture, fin).
-  - **Page** : HTML et JS servis statiquement, avec trois vues (Joueur, Animateur selon le jeton, podium avec Récapitulatif), un panneau de règles, et un relevé périodique de l'état en plus du flux SSE. Le Markdown est rendu côté client, le QR code est généré côté client, et le joueur est mémorisé dans `localStorage`.
-  - **Skill `grilling-arena`** : sa source est versionnée dans le dépôt et elle est installée dans `~/.claude/skills/` par un lien symbolique.
-- **Jeton Animateur** : aléatoire, régénéré à chaque démarrage du serveur, affiché dans la console et écrit (avec le port) dans le dossier des Séances, lisible par l'utilisateur seul. Il est exigé pour publier une Étape, lire un résultat, clore, départager, marquer à reposer, démarrer et terminer une Séance. Le skill le lit dans ce dossier, que le serveur vienne d'être lancé ou tourne déjà.
-- **Contrat de l'API** (les noms exacts sont laissés à l'implémentation) :
-  - Claude, avec jeton : démarrer une Séance (titre), ce qui archive la Séance active ; publier une Étape (numéro, nombre de Questions tranchées, estimation des Questions à venir, puis pour chaque Question un identifiant, un titre, un corps Markdown, des Propositions identifiées et l'identifiant de la recommandée) ; attendre le résultat d'une Étape en long-poll ; terminer la Séance, ce qui renvoie le Récapitulatif Markdown.
-  - Une seule Étape à la fois : en publier une autre tant que la précédente n'est pas close est refusé. Une Étape publiée attend l'Ouverture par l'Animateur.
-  - Le long-poll répond tout de suite si l'Étape est déjà close. Sinon il reste ouvert jusqu'à la clôture, sans délai côté serveur, et peut être relancé sans effet de bord.
-  - Joueur : rejoindre avec un pseudo, unique dans la Séance sans tenir compte de la casse (refusé s'il existe, sauf demande de reprise explicite qui rend le Joueur existant), ce qui renvoie un identifiant de Joueur ; poser, changer ou retirer son Vote et son Commentaire sur une Question de l'Étape ouverte ; lire l'état courant.
-  - L'état renvoyé pendant une Étape ouverte ne contient que le Vote et le Commentaire du Joueur qui le demande, plus les compteurs. Après la clôture, il contient tout.
-  - Animateur, avec jeton : clore l'Étape avec les départages et la liste des Questions à reposer. Une clôture qui laisse un ex æquo sans recommandée et sans départage est refusée, avec la liste des Questions à départager.
-  - Un Vote ou un Commentaire sur une Étape close est refusé.
-- **Résultat renvoyé à Claude**, pour chaque Question : statut (`retenue` ou `a_reposer`), Proposition retenue, nombre de Votes par Proposition, nombre d'Abstentions, Commentaires avec leur pseudo. Le résultat contient aussi le Tableau des scores à jour.
-- **Avancement** : fourni par Claude à chaque Étape et affiché tel quel (« Étape n · x tranchées · ~y à venir »). Le serveur ne le calcule pas.
-- **Récapitulatif** : produit par le serveur à partir des Étapes closes. Il liste, Étape par Étape, chaque Question avec sa Proposition retenue. Il contient aussi les Questions à reposer, comme telles, et le Tableau des scores final.
+- **Dedicated repository** `grill-arena`, in Node.js and Express, with no build step. The server listens on `0.0.0.0`, port 4242 by default and configurable.
+- **Modules**:
+  - **Arbitration** (pure, no I/O): from a Question, Votes, tiebreaks and Questions to re-ask, it determines the status of the Question, the Selected option and the ties to break. From the results of a Step and the Players, it computes each one's gains. The scale is 1 Point by default, and is configurable. A tie between Options is sent back out loud (Question to re-ask), except after a re-ask where the Facilitator decides.
+  - **Session**: the in-memory state (Players, Steps, Votes, Comments, Scoreboard). It validates the published Steps, applies the hiding rules and produces the Summary. It relies on Arbitration.
+  - **Storage**: one JSON file per Session, written at each closing and at the start or end of the Session. The last unfinished Session is reloaded at startup. The folder is configurable.
+  - **HTTP API**: a thin adapter over the Session, plus an SSE stream that broadcasts changes (new Step, counters, closing, end).
+  - **Page**: HTML and JS served statically, with three views (Player, Facilitator depending on the token, podium with Summary), a rules panel, and a periodic poll of the state in addition to the SSE stream. Markdown is rendered client-side, the QR code is generated client-side, and the Player is remembered in `localStorage`.
+  - **`grilling-arena` skill**: its source is versioned in the repository and it is installed in `~/.claude/skills/` through a symbolic link.
+- **Facilitator token**: random, regenerated at each server start, displayed in the console and written (with the port) in the Sessions folder, readable by the user only. It is required to publish a Step, read a result, close, break a tie, mark a Question to re-ask, and start and end a Session. The skill reads it from that folder, whether the server has just been launched or is already running.
+- **API contract** (exact names are in `src/server.js`):
+  - Claude, with token: start a Session (title, initial prompt), which archives the active Session; publish a Step (number, number of Questions settled, estimate of the Questions to come, then for each Question an identifier, a title, a Markdown body, identified Options and the identifier of the recommended one); wait for the result of a Step by long-poll; end the Session, which returns the Markdown Summary.
+  - Only one Step at a time: publishing another while the previous one is not closed is refused. A published Step waits for the Opening by the Facilitator.
+  - The long-poll answers immediately if the Step is already closed. Otherwise it stays open until closing, with no server-side timeout, and can be relaunched with no side effect.
+  - Player: join with a nickname, unique in the Session regardless of case (refused if it exists, unless an explicit resume request returns the existing Player), which returns a Player identifier; set, change or remove one's Vote and Comment on a Question of the open Step; read the current state.
+  - The state returned during an open Step only contains the Vote and Comment of the Player who asks, plus the counters. After closing, it contains everything.
+  - Facilitator, with token: close the Step with the tiebreaks and the list of Questions to re-ask. A closing that leaves a tie without recommended option and without tiebreak is refused, with the list of Questions to break.
+  - A Vote or a Comment on a closed Step is refused.
+- **Result returned to Claude**, for each Question: status (`selected` or `to_reask`), Selected option, number of Votes per Option, number of Abstentions, Comments with their nickname. The result also contains the up-to-date Scoreboard.
+- **Progress**: provided by Claude at each Step and displayed as is ("Step n · x settled · ~y to come"). The server does not compute it.
+- **Summary**: produced by the server from the closed Steps. It lists, Step by Step, each Question with its Selected option. It also contains the Questions to re-ask, as such, and the final Scoreboard.
 
 ## Testing Decisions
 
-- Un bon test passe par une interface publique et vérifie un comportement observable (réponse HTTP, résultat renvoyé à Claude, Tableau des scores, contenu de l'état visible par un Joueur). Il ne vérifie jamais la structure interne de l'état.
-- **Couture principale : l'API HTTP.** Le serveur est démarré dans le processus de test, sur un port libre, avec un dossier de Séances temporaire et un jeton imposé. Les tests jouent Claude, plusieurs Joueurs et l'Animateur sur un cycle complet. Ils couvrent :
-  - la publication, avec refus des Étapes mal formées ;
-  - les Votes, les changements de Vote et les Abstentions ;
-  - le masquage avant clôture ;
-  - le refus sans jeton ;
-  - la clôture refusée tant qu'un ex æquo n'est pas départagé ;
-  - le long-poll débloqué par la clôture ;
-  - le contenu du résultat et du Récapitulatif ;
-  - la reprise après redémarrage à partir du JSON.
-- **Couture secondaire : le module Arbitrage**, testé directement. Cas couverts :
-  - majorité simple ;
-  - aucun Vote ;
-  - ex æquo avec la recommandée ;
-  - ex æquo sans la recommandée (départage exigé, puis appliqué) ;
-  - Question à reposer ;
-  - Point unique, sans Bonus ;
-  - Abstention ;
-  - Joueur arrivé en cours de Séance ;
-  - barème personnalisé.
-- Runner : `node:test`, sans dépendance de test. Implémentation en TDD (`tdd`).
-- Pas de test automatisé pour la page (SSE côté navigateur, rendu, QR code) ni pour le skill : on les vérifie à la main lors d'une vraie Séance.
-- Il n'existe pas de test antérieur dans ce dépôt (il vient d'être créé).
+- A good test goes through a public interface and checks an observable behavior (HTTP response, result returned to Claude, Scoreboard, content of the state visible to a Player). It never checks the internal structure of the state.
+- **Main seam: the HTTP API.** The server is started in the test process, on a free port, with a temporary Sessions folder and an imposed token. The tests play Claude, several Players and the Facilitator over a full cycle. They cover:
+  - publishing, with refusal of malformed Steps;
+  - Votes, Vote changes and Abstentions;
+  - hiding before closing;
+  - refusal without a token;
+  - closing refused as long as a tie is not broken;
+  - the long-poll released by closing;
+  - the content of the result and of the Summary;
+  - resumption after a restart from the JSON.
+- **Secondary seam: the Arbitration module**, tested directly. Cases covered:
+  - simple majority;
+  - no Vote;
+  - tie with the recommended option;
+  - tie without the recommended option (tiebreak required, then applied);
+  - Question to re-ask;
+  - single Point, no Bonus;
+  - Abstention;
+  - Player who arrives mid-Session;
+  - custom scale.
+- Runner: `node:test`, with no test dependency. Implementation in TDD (`tdd`).
+- No automated test for the page (browser-side SSE, rendering, QR code) nor for the skill: they are checked by hand during a real Session.
+- There is no prior test in this repository (it has just been created).
 
 ## Out of Scope
 
-- Authentification réelle, HTTPS, accès depuis Internet.
-- Plusieurs Séances simultanées.
-- Délai automatique de clôture, ou clôture quand tout le monde a voté.
-- Propositions ajoutées par les Joueurs pendant le vote (on passe par un Commentaire, puis par une Question à reposer).
-- Malus, pondération des Questions, succès ou badges.
-- Modification du skill `grilling` existant et intégration à `grill-with-docs` (le glossaire et les ADR restent à la charge de Claude pendant la Séance, comme au terminal).
-- Historique navigable des Séances passées dans l'interface (les fichiers JSON suffisent).
+- Real authentication, HTTPS, access from the Internet.
+- Several simultaneous Sessions.
+- Automatic closing delay, or closing when everyone has voted.
+- Options added by Players during the vote (go through a Comment, then a Question to re-ask).
+- Penalties, weighting of Questions, achievements or badges.
+- Modification of the existing `grilling` skill and integration into `grill-with-docs` (the glossary and ADRs remain Claude's responsibility during the Session, as in the terminal).
+- Browsable history of past Sessions in the interface (the JSON files are enough).
 
 ## Further Notes
 
-- Le serveur ne fait pas tourner Claude : il ne fait que relayer. Toute l'intelligence du grilling (frontière, recommandations) reste dans le skill.
-- Le long-poll lancé en arrière-plan sert à respecter la contrainte de Claude Code, qui ne permet pas d'attente bloquante au premier plan. Le skill doit lancer la requête en arrière-plan et attendre la notification.
-- Découpage possible avec `to-tickets` : (1) Arbitrage ; (2) Séance, Stockage et API ; (3) Page ; (4) Skill `grilling-arena`.
+- The server does not run Claude: it only relays. All the intelligence of the grilling (frontier, recommendations) stays in the skill.
+- The long-poll launched in the background respects the Claude Code constraint, which does not allow a blocking wait in the foreground. The skill must launch the request in the background and wait for the notification.
+- Possible split with `to-tickets`: (1) Arbitration; (2) Session, Storage and API; (3) Page; (4) `grilling-arena` skill.

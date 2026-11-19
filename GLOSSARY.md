@@ -2,83 +2,84 @@
 
 A grilling session run by Claude where several participants vote on the options of each question, with a score to make the exercise playful.
 
-The domain terms are French: they are the ones used by the interface, the API and the code. Each entry gives its English equivalent in parentheses.
-
 ## Language
 
 ### Flow
 
-**Séance** (session):
-A complete grilling, from the first round until no question is left open.
-_Avoid_: partie, session
+**Session**:
+A complete grilling, from the first Step until no question is left open.
+_Avoid_: game, match
 
-**Étape** (Step):
-One round of grilling: all the questions asked at the same time, put to the vote, then closed.
-_Avoid_: round, manche, tour
+**Step**:
+One round of grilling: all the Questions asked at the same time, put to the vote, then closed.
+_Avoid_: round, turn
 
-**Prompt initial** (initial prompt):
-The starting request of the Séance. Joueurs see it until the first Étape is opened, and the Animateur can edit it until then; afterwards only the Animateur can read it, and it no longer changes.
-_Avoid_: consigne, sujet
+**Initial prompt**:
+The starting request of the Session. Players see it until the first Step is opened, and the Facilitator can edit it until then; afterwards only the Facilitator can read it, and it no longer changes.
+_Avoid_: brief, topic
 
-**Ouverture** (opening):
-The act by which the Animateur starts the vote of an Étape that Claude has published; until it is opened, Joueurs do not see its Questions.
-_Avoid_: validation, démarrage
+**Opening**:
+The act by which the Facilitator starts the vote of a Step that Claude has published; until it is opened, Players do not see its Questions.
+_Avoid_: validation, launch
 
 **Question**:
-A decision to settle within an Étape, with closed Propositions.
+A decision to settle within a Step, with closed Options.
 
-**Numéro** (number):
-The rank of a Question in the Séance, continuous from one Étape to the next; a Question à reposer gets a new Numéro.
+**Number**:
+The rank of a Question in the Session, continuous from one Step to the next; a re-asked Question gets a new Number.
 
-**Proposition** (option):
+**Option**:
 One possible answer to a Question.
-_Avoid_: option, choix
+_Avoid_: choice, proposal
 
-**Proposition recommandée** (recommended option):
-The Proposition Claude advises for a Question; there is exactly one per Question.
+**Recommended option**:
+The Option Claude advises for a Question; there is exactly one per Question.
 
-**Proposition retenue** (retained option):
-The Proposition that settles the Question when the Étape closes: the one with the most Votes, the recommended one if nobody voted, otherwise the one the Animateur picks among the tied ones.
-_Avoid_: réponse gagnante, décision
+**Selected option**:
+The Option that settles the Question when the Step closes: the one with the most Votes, the recommended one if nobody voted, otherwise the one the Facilitator picks among the tied ones.
+_Avoid_: winning answer, decision
 
-**Question à reposer** (question to re-ask):
-A Question closed without a Proposition retenue: either because the Votes are tied (split Votes), or because the Animateur re-asks it, the Commentaires showing that no Proposition fits. It comes back in the next Étape, reformulated, as a Question reprise.
-_Avoid_: question annulée, autre
+**Question to re-ask**:
+A Question closed without a Selected option: either because the Votes are tied (a split vote), or because the Facilitator re-asks it, the Comments showing that no Option fits. It comes back in the next Step, reformulated, as a Re-asked question.
+_Avoid_: cancelled question, other
 
-**Question reprise** (re-asked question):
-A Question published by naming the Question à reposer it takes over (`reprise`). A tie on a Question reprise is not re-asked a second time: the Animateur breaks it. A Question is taken over only once, and a Question reprise can no longer be re-asked.
+**Split vote**:
+A tie between Options on a Question. It is not settled by the Recommended option: the Question becomes a Question to re-ask, so that the disagreement is discussed out loud.
 
-**Récapitulatif** (summary):
-The list of the Propositions retenues of a Séance, which feeds the spec.
+**Re-asked question**:
+A Question published by naming the Question to re-ask it takes over (`reaskOf`). A tie on a Re-asked question is not re-asked a second time: the Facilitator breaks it. A Question is taken over only once, and a Re-asked question can no longer be re-asked.
+
+**Summary**:
+The list of the Selected options of a Session, which feeds the spec.
 
 ### Participants
 
-**Joueur** (player):
+**Player**:
 A participant identified by a nickname, who votes, abstains or comments.
-_Avoid_: participant, utilisateur, votant
+_Avoid_: participant, user, voter
 
-**Animateur** (facilitator):
-A Joueur who, in addition, opens and closes Étapes and breaks ties.
-_Avoid_: admin, maître du jeu
+**Facilitator**:
+A Player who, in addition, opens and closes Steps and breaks ties.
+_Avoid_: admin, game master
 
-**Co-animateur** (co-facilitator):
-A Joueur the Animateur appoints to open and close Étapes in their place, for example when they have to step away; the Animateur can revoke them at any time.
-_Avoid_: adjoint, modérateur
+**Co-facilitator**:
+A Player the Facilitator appoints to open and close Steps in their place, for example when they have to step away; the Facilitator can revoke them at any time.
+_Avoid_: deputy, moderator
 
 **Vote**:
-A Joueur's choice of a Proposition for a Question; it stays hidden until the Étape closes.
+A Player's choice of an Option for a Question; it stays hidden until the Step closes.
 
 **Abstention**:
-A Joueur's absence of Vote on a Question; it earns nothing and costs nothing.
+A Player's absence of Vote on a Question; it earns nothing and costs nothing.
 
-**Commentaire** (comment):
-A free text a Joueur adds to a Question; it is passed on to Claude and does not count as a Vote.
+**Comment**:
+A free text a Player adds to a Question; it is passed on to Claude and does not count as a Vote.
 
 ### Score
 
 **Point**:
-What a Joueur earns when their Vote is for the Proposition retenue.
+What a Player earns when their Vote is for the Selected option.
 
-**Tableau des scores** (score table):
-The running total of each Joueur's Points over the Séance, published at the end of the Séance.
-_Avoid_: classement, leaderboard
+**Scoreboard**:
+The running total of each Player's Points over the Session, published at the end of the Session.
+_Avoid_: ranking, leaderboard

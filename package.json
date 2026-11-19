@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Séance de grilling multijoueur : votes, Commentaires et Tableau des scores.",
+  "description": "Multiplayer grilling sessions: votes, comments and a scoreboard.",
   "bin": {
     "grill-arena": "src/main.js"
   },

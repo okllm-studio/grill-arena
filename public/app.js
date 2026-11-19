@@ -1,214 +1,216 @@
-// Page Joueur / Animateur. L'état vient de /api/etat ; le flux SSE signale chaque changement.
+// Player / Facilitator page. State comes from /api/state; the SSE stream signals every change.
 
-const jeton = new URLSearchParams(location.search).get("jeton");
+const token = new URLSearchParams(location.search).get("token");
 const el = (id) => document.getElementById(id);
 
-let etat = null;
-let tableauOuvert = false;
-let reglesOuvertes = false;
-/** Onglet affiché : "etape", "resultats" ou "animateur". */
-let onglet = "etape";
-/** Dernier état reçu, sérialisé : évite de redessiner la page quand rien n'a changé. */
-let dernierEtat = "";
-/** Pseudo en cours de saisie, conservé à travers les redessins ; conflit : pseudo déjà pris à proposer à la reprise. */
-let pseudoSaisi = "";
-let conflitPseudo = null;
-/** Questions à départager après un refus de clôture : [{question, exAequo}] */
-let aDepartager = [];
-/** Commentaires en cours de saisie, non encore enregistrés : questionId → texte */
-const brouillons = new Map();
-/** Commentaires refusés par le serveur : questionId → message */
-const erreursCommentaire = new Map();
-/** Enregistrement automatique : questionId → minuteur du délai après la dernière frappe */
-const minuteurs = new Map();
-const DELAI_ENREGISTREMENT = 1000;
-/** Étape dont dépendent les brouillons ; ils sont abandonnés quand une autre Étape apparaît. */
-let etapeSuivie = null;
-/** Prompt initial en cours de modification par l'Animateur, non encore enregistré. */
-let promptBrouillon = null;
-/** Adresses d'accès des Joueurs, lues une fois par l'Animateur. */
-let infos = null;
-let jetonInvalide = false;
-let infosEnCours = false;
+let state = null;
+let scoreboardOpen = false;
+let rulesOpen = false;
+/** Displayed tab: "step", "results" or "facilitator". */
+let tab = "step";
+/** Last state received, serialized: avoids redrawing the page when nothing changed. */
+let lastState = "";
+/** Nickname being typed, kept across redraws; nicknameConflict: nickname already taken, offered for resuming. */
+let typedNickname = "";
+let nicknameConflict = null;
+/** Questions whose tie must be broken after a refused closing: [{question, tiedOptions}] */
+let toBreak = [];
+/** Comments being typed, not yet saved: questionId → text */
+const drafts = new Map();
+/** Comments refused by the server: questionId → message */
+const commentErrors = new Map();
+/** Autosave: questionId → timer for the delay after the last keystroke */
+const timers = new Map();
+const SAVE_DELAY = 1000;
+/** Step the drafts belong to; they are dropped when another Step appears. */
+let trackedStep = null;
+/** Initial prompt being edited by the Facilitator, not yet saved. */
+let promptDraft = null;
+/** Player access URLs, read once by the Facilitator. */
+let info = null;
+let invalidToken = false;
+let infoLoading = false;
 
-// --- Identité du Joueur, mémorisée par Séance -------------------------------
+// --- Player identity, remembered per Session ---------------------------------
 
-const cle = () => `grill-arena:${etat?.seance?.id}`;
-function moi() {
+const storageKey = () => `grill-arena:${state?.session?.id}`;
+function stored() {
   try {
-    return JSON.parse(localStorage.getItem(cle()) ?? "null");
+    return JSON.parse(localStorage.getItem(storageKey()) ?? "null");
   } catch {
     return null;
   }
 }
-function memoriser(joueur) {
+function remember(player) {
   try {
-    localStorage.setItem(cle(), JSON.stringify(joueur));
+    localStorage.setItem(storageKey(), JSON.stringify(player));
   } catch {
-    // stockage indisponible : le Joueur devra rejoindre à nouveau après rechargement
+    // storage unavailable: the Player will have to join again after a reload
   }
-  sessionJoueur = joueur;
+  sessionPlayer = player;
 }
-let sessionJoueur = null;
-const joueur = () => moi() ?? sessionJoueur;
+let sessionPlayer = null;
+const player = () => stored() ?? sessionPlayer;
 
-// --- Échanges avec le serveur -----------------------------------------------
+// --- Server exchanges -----------------------------------------------------------
 
-/** Une requête qui modifie la Séance porte l'identité du Joueur : un Co-animateur s'y reconnaît. */
-async function api(methode, chemin, corps, { keepalive = false } = {}) {
-  const entetes = { "content-type": "application/json" };
-  if (jeton) entetes.authorization = `Bearer ${jeton}`;
-  if (methode !== "GET" && methode !== "DELETE" && joueur() && (corps === undefined || corps.joueur === undefined)) {
-    corps = { joueur: joueur().id, ...(corps ?? {}) };
+/** A request that modifies the Session carries the Player's identity: a Co-facilitator is recognized by it. */
+async function api(method, path, body, { keepalive = false } = {}) {
+  const headers = { "content-type": "application/json" };
+  if (token) headers.authorization = `Bearer ${token}`;
+  if (method !== "GET" && method !== "DELETE" && player() && (body === undefined || body.player === undefined)) {
+    body = { player: player().id, ...(body ?? {}) };
   }
-  const reponse = await fetch(
-    methode === "DELETE" && joueur() ? `${chemin}?joueur=${encodeURIComponent(joueur().id)}` : chemin,
+  const response = await fetch(
+    method === "DELETE" && player() ? `${path}?player=${encodeURIComponent(player().id)}` : path,
     {
-      method: methode,
-      headers: entetes,
-      body: corps === undefined ? undefined : JSON.stringify(corps),
+      method,
+      headers,
+      body: body === undefined ? undefined : JSON.stringify(body),
       keepalive,
     },
   );
-  const donnees = await reponse.json().catch(() => ({}));
-  return { ok: reponse.ok, statut: reponse.status, donnees };
+  const data = await response.json().catch(() => ({}));
+  return { ok: response.ok, status: response.status, data };
 }
 
-let numeroReleve = 0;
-/** Clic ou toucher en cours : on retarde le redessin pour ne pas perdre le clic. */
-let pointeurEnfonce = false;
-let renduEnAttente = false;
+let fetchCounter = 0;
+/** Click or touch in progress: the redraw is delayed so the click is not lost. */
+let pointerDown = false;
+let renderPending = false;
 
-async function rafraichir({ forcer = false } = {}) {
-  const numero = ++numeroReleve;
-  const j = joueur();
-  const { donnees } = await api("GET", j ? `/api/etat?joueur=${encodeURIComponent(j.id)}` : "/api/etat");
-  if (numero !== numeroReleve) return; // un relevé plus récent a été lancé entre-temps
-  const serialise = JSON.stringify(donnees);
-  etat = donnees;
-  if (!forcer && serialise === dernierEtat) return;
-  dernierEtat = serialise;
-  if (pointeurEnfonce) renduEnAttente = true;
-  else afficher();
+async function refresh({ force = false } = {}) {
+  const counter = ++fetchCounter;
+  const p = player();
+  const { data } = await api("GET", p ? `/api/state?player=${encodeURIComponent(p.id)}` : "/api/state");
+  if (counter !== fetchCounter) return; // a more recent fetch was started in the meantime
+  const serialized = JSON.stringify(data);
+  state = data;
+  if (!force && serialized === lastState) return;
+  lastState = serialized;
+  if (pointerDown) renderPending = true;
+  else render();
 }
 
-function signaler(texte) {
-  el("message").textContent = texte;
-  clearTimeout(signaler.minuteur);
-  signaler.minuteur = setTimeout(() => (el("message").textContent = ""), 4000);
+function notify(text) {
+  el("message").textContent = text;
+  clearTimeout(notify.timer);
+  notify.timer = setTimeout(() => (el("message").textContent = ""), 4000);
 }
 
-// --- Outils de rendu -----------------------------------------------------------
+// --- Rendering helpers -----------------------------------------------------------
 
-const echapper = (s) =>
+const escapeHtml = (s) =>
   String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
-// Le Récapitulatif contient des pseudos choisis par les Joueurs : le HTML brut du Markdown est affiché tel quel, jamais interprété.
-marked.use({ renderer: { html: ({ text }) => echapper(text) } });
+// The Summary contains nicknames chosen by Players: raw HTML in the Markdown is shown as is, never interpreted.
+marked.use({ renderer: { html: ({ text }) => escapeHtml(text) } });
 
-const estAnimateur = () => Boolean(jeton);
-const peutPiloter = () => estAnimateur() || etat?.coAnimateur === true;
+const isFacilitator = () => Boolean(token);
+const canControl = () => isFacilitator() || state?.coFacilitator === true;
 
-/** Numéro de la Question dans la Séance, affiché pour que les Joueurs puissent s'y référer. */
-const intitule = (q) =>
-  `<span class="numero">Q${q.numero}</span>${echapper(q.titre ?? q.id)}${q.repriseDe ? ` <small>(reprise de Q${q.repriseDe})</small>` : ""}`;
+/** Question number within the Session, shown so Players can refer to it. */
+const heading = (q) =>
+  `<span class="number">Q${q.number}</span>${escapeHtml(q.title ?? q.id)}${q.reaskOfNumber ? ` <small>(re-asked from Q${q.reaskOfNumber})</small>` : ""}`;
 
-const libelleProposition = (q, id) => q.propositions.find((p) => p.id === id)?.libelle ?? id;
+const optionLabel = (q, id) => q.options.find((o) => o.id === id)?.label ?? id;
 
-// --- Références entre Questions ------------------------------------------------
+const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
-/** Questions des Étapes closes, par Numéro : de quoi remplir les infobulles. */
-function questionsCloses() {
+// --- References between Questions ------------------------------------------------
+
+/** Questions of closed Steps, by number: used to fill the tooltips. */
+function closedQuestions() {
   const index = new Map();
-  for (const etape of etat?.resultats ?? []) {
-    for (const q of etape.questions) index.set(q.numero, q);
+  for (const step of state?.results ?? []) {
+    for (const q of step.questions) index.set(q.number, q);
   }
   return index;
 }
 
-function contenuInfobulle(q) {
-  const r = q.resultat;
-  const issue =
-    r.statut === "retenue"
-      ? `Retenue : ${libelleProposition(q, r.retenue)}`
-      : r.partage
-        ? "Partage des Votes : renvoyée à l'oral"
-        : "À reposer";
-  const repartition = q.propositions.map((p) => `${echapper(p.libelle)} : ${r.repartition[p.id]}`).join(" · ");
-  const vote = q.monVote ? `Votre Vote : ${echapper(libelleProposition(q, q.monVote))}` : "Vous n'avez pas voté.";
-  return `<strong>Q${q.numero} · ${echapper(q.titre)}</strong><br>${echapper(issue)}<br>${repartition}<br>${vote}`;
+function tooltipContent(q) {
+  const r = q.result;
+  const outcome =
+    r.status === "selected"
+      ? `Selected: ${optionLabel(q, r.selected)}`
+      : r.split
+        ? "Split vote: to be settled verbally"
+        : "To re-ask";
+  const distribution = q.options.map((o) => `${escapeHtml(o.label)}: ${r.distribution[o.id]}`).join(" · ");
+  const vote = q.myVote ? `Your Vote: ${escapeHtml(optionLabel(q, q.myVote))}` : "You did not vote.";
+  return `<strong>Q${q.number} · ${escapeHtml(q.title)}</strong><br>${escapeHtml(outcome)}<br>${distribution}<br>${vote}`;
 }
 
-/** Transforme les mentions `Qn` d'une Question d'une Étape close en références à infobulle ; le reste est inchangé. */
-function avecReferences(html) {
-  const index = questionsCloses();
+/** Turns `Qn` mentions of a closed Step's Question into references with a tooltip; the rest is unchanged. */
+function withReferences(html) {
+  const index = closedQuestions();
   if (!index.size) return html;
-  const conteneur = document.createElement("div");
-  conteneur.innerHTML = html;
-  const marcheur = document.createTreeWalker(conteneur, NodeFilter.SHOW_TEXT);
-  const textes = [];
-  while (marcheur.nextNode()) {
-    if (!marcheur.currentNode.parentElement.closest("code, pre, a")) textes.push(marcheur.currentNode);
+  const container = document.createElement("div");
+  container.innerHTML = html;
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  const texts = [];
+  while (walker.nextNode()) {
+    if (!walker.currentNode.parentElement.closest("code, pre, a")) texts.push(walker.currentNode);
   }
-  for (const noeud of textes) {
-    if (!/\bQ\d+\b/.test(noeud.textContent)) continue;
+  for (const node of texts) {
+    if (!/\bQ\d+\b/.test(node.textContent)) continue;
     const fragment = document.createDocumentFragment();
-    for (const morceau of noeud.textContent.split(/(\bQ\d+\b)/)) {
-      const q = /^Q(\d+)$/.test(morceau) ? index.get(Number(morceau.slice(1))) : null;
+    for (const piece of node.textContent.split(/(\bQ\d+\b)/)) {
+      const q = /^Q(\d+)$/.test(piece) ? index.get(Number(piece.slice(1))) : null;
       if (!q) {
-        fragment.append(morceau);
+        fragment.append(piece);
         continue;
       }
       const ref = document.createElement("span");
       ref.className = "ref";
       ref.tabIndex = 0;
-      ref.dataset.reference = String(q.numero);
-      ref.append(morceau);
-      const bulle = document.createElement("span");
-      bulle.className = "infobulle";
-      bulle.setAttribute("role", "tooltip");
-      bulle.innerHTML = contenuInfobulle(q);
-      ref.append(bulle);
+      ref.dataset.reference = String(q.number);
+      ref.append(piece);
+      const bubble = document.createElement("span");
+      bubble.className = "tooltip";
+      bubble.setAttribute("role", "tooltip");
+      bubble.innerHTML = tooltipContent(q);
+      ref.append(bubble);
       fragment.append(ref);
     }
-    noeud.replaceWith(fragment);
+    node.replaceWith(fragment);
   }
-  return conteneur.innerHTML;
+  return container.innerHTML;
 }
 
-// --- Rendu général ---------------------------------------------------------------
+// --- Overall rendering -------------------------------------------------------------
 
-function afficher() {
+function render() {
   const focus = document.activeElement?.id;
   const selection = focus && [document.activeElement.selectionStart, document.activeElement.selectionEnd];
 
-  const etapeId = etat?.etape?.id ?? null;
-  if (etapeId !== etapeSuivie) {
-    etapeSuivie = etapeId;
-    brouillons.clear();
-    erreursCommentaire.clear();
-    for (const minuteur of minuteurs.values()) clearTimeout(minuteur);
-    minuteurs.clear();
+  const stepId = state?.step?.id ?? null;
+  if (stepId !== trackedStep) {
+    trackedStep = stepId;
+    drafts.clear();
+    commentErrors.clear();
+    for (const timer of timers.values()) clearTimeout(timer);
+    timers.clear();
   }
 
-  const seance = etat?.seance;
-  el("titre").textContent = seance?.titre ?? "Grill Arena";
-  const e = etat?.etape;
-  el("avancement").textContent = !seance
+  const session = state?.session;
+  el("title").textContent = session?.title ?? "Grill Arena";
+  const s = state?.step;
+  el("progress").textContent = !session
     ? ""
-    : seance.terminee
-      ? "Séance terminée"
-      : e
-        ? `Étape ${e.numero} · ${e.tranchees} tranchées · ~${e.aVenir} à venir`
-        : "En attente de la première Étape";
+    : session.ended
+      ? "Session ended"
+      : s
+        ? `Step ${s.number} · ${s.settled} settled · ~${s.remaining} to go`
+        : "Waiting for the first Step";
 
-  afficherRegles();
-  afficherTableau();
-  afficherOnglets();
-  afficherPilotage();
-  afficherEtape();
-  afficherResultats();
-  afficherAnimateur();
+  renderRules();
+  renderScoreboard();
+  renderTabs();
+  renderControls();
+  renderStep();
+  renderResults();
+  renderFacilitator();
 
   if (focus && el(focus)) {
     el(focus).focus();
@@ -216,587 +218,588 @@ function afficher() {
   }
 }
 
-function afficherOnglets() {
-  const nav = el("onglets");
-  if (!etat?.seance) {
+function renderTabs() {
+  const nav = el("tabs");
+  if (!state?.session) {
     nav.hidden = true;
-    el("contenu").hidden = false;
-    el("resultats").hidden = true;
-    el("animateur").hidden = !estAnimateur();
+    el("content").hidden = false;
+    el("results").hidden = true;
+    el("facilitator").hidden = !isFacilitator();
     return;
   }
-  const onglets = [
-    ["etape", "Étape en cours"],
-    ["resultats", `Résultats${etat.resultats?.length ? ` (${etat.resultats.length})` : ""}`],
-    ...(estAnimateur() ? [["animateur", "Animateur"]] : []),
+  const tabs = [
+    ["step", "Current Step"],
+    ["results", `Results${state.results?.length ? ` (${state.results.length})` : ""}`],
+    ...(isFacilitator() ? [["facilitator", "Facilitator"]] : []),
   ];
-  if (!onglets.some(([id]) => id === onglet)) onglet = "etape";
+  if (!tabs.some(([id]) => id === tab)) tab = "step";
   nav.hidden = false;
-  nav.innerHTML = onglets
+  nav.innerHTML = tabs
     .map(
-      ([id, libelle]) =>
-        `<button type="button" role="tab" class="secondaire" data-onglet="${id}" aria-selected="${id === onglet}">${libelle}</button>`,
+      ([id, label]) =>
+        `<button type="button" role="tab" class="secondary" data-tab="${id}" aria-selected="${id === tab}">${label}</button>`,
     )
     .join("");
-  el("contenu").hidden = onglet !== "etape";
-  el("resultats").hidden = onglet !== "resultats";
-  el("animateur").hidden = onglet !== "animateur";
+  el("content").hidden = tab !== "step";
+  el("results").hidden = tab !== "results";
+  el("facilitator").hidden = tab !== "facilitator";
 }
 
-// --- Onglet « Étape en cours » -----------------------------------------------------
+// --- "Current Step" tab -----------------------------------------------------------------
 
-function afficherEtape() {
-  const seance = etat?.seance;
-  if (!seance) {
-    el("contenu").innerHTML = estAnimateur()
+function renderStep() {
+  const session = state?.session;
+  if (!session) {
+    el("content").innerHTML = isFacilitator()
       ? ""
-      : `<div class="carte">L'Animateur n'a pas encore lancé la Séance. Cette page se mettra à jour toute seule.</div>`;
+      : `<div class="card">The Facilitator has not started the Session yet. This page will update by itself.</div>`;
     return;
   }
-  const e = etat.etape;
-  // Le Prompt initial n'est donné aux Joueurs que jusqu'à l'Ouverture de l'Étape 1.
+  const s = state.step;
+  // The Initial prompt is only shown to Players until the Opening of Step 1.
   const prompt =
-    seance.prompt && !seance.promptVerrouille
-      ? `<section class="panneau prompt-visible"><h2>Prompt initial</h2><div class="corps">${marked.parse(seance.prompt)}</div></section>`
+    session.prompt && !session.promptLocked
+      ? `<section class="panel prompt-visible"><h2>Initial prompt</h2><div class="body-text">${marked.parse(session.prompt)}</div></section>`
       : "";
 
-  if (seance.terminee) {
-    el("contenu").innerHTML = podium();
-  } else if (!joueur()) {
-    el("contenu").innerHTML = prompt + formulaireRejoindre();
-  } else if (!e) {
-    el("contenu").innerHTML =
-      prompt + `<div class="carte">Bienvenue ${echapper(joueur().pseudo)}. Claude prépare la première Étape…</div>`;
-  } else if (e.etat === "en_attente") {
-    el("contenu").innerHTML =
+  if (session.ended) {
+    el("content").innerHTML = podium();
+  } else if (!player()) {
+    el("content").innerHTML = prompt + joinForm();
+  } else if (!s) {
+    el("content").innerHTML =
+      prompt + `<div class="card">Welcome ${escapeHtml(player().nickname)}. Claude is preparing the first Step…</div>`;
+  } else if (s.state === "pending") {
+    el("content").innerHTML =
       prompt +
-      `<p class="statut" role="status">L'Animateur ouvrira l'Étape ${e.numero} : vous pourrez alors voter.</p>` +
-      (etat.resultats?.length ? blocResultats(etat.resultats[0]) : "");
+      `<p class="status" role="status">The Facilitator will open Step ${s.number}: you will then be able to vote.</p>` +
+      (state.results?.length ? resultsBlock(state.results[0]) : "");
   } else {
-    el("contenu").innerHTML =
-      statutJoueur(e) + e.questions.map((q) => carteQuestion(e, q)).join("");
+    el("content").innerHTML =
+      playerStatus(s) + s.questions.map((q) => questionCard(s, q)).join("");
   }
 }
 
-function formulaireRejoindre() {
-  return `<form class="carte" id="form-rejoindre">
-    <h2>Rejoindre la Séance</h2>
-    <label for="pseudo">Pseudo</label>
-    <input id="pseudo" name="pseudo" maxlength="30" autocomplete="nickname" value="${echapper(pseudoSaisi)}" required />
-    <div class="actions"><button type="submit">Rejoindre</button></div>
+function joinForm() {
+  return `<form class="card" id="join-form">
+    <h2>Join the Session</h2>
+    <label for="nickname">Nickname</label>
+    <input id="nickname" name="nickname" maxlength="30" autocomplete="nickname" value="${escapeHtml(typedNickname)}" required />
+    <div class="actions"><button type="submit">Join</button></div>
     ${
-      conflitPseudo
-        ? `<p class="statut-reposer">Le pseudo « ${echapper(conflitPseudo)} » est déjà pris. Si c'était vous (autre navigateur, données effacées), vous pouvez le reprendre.</p>
-           <div class="actions"><button type="button" class="secondaire" data-reprendre>C'est moi, reprendre ce pseudo</button></div>`
+      nicknameConflict
+        ? `<p class="reask-status">The nickname "${escapeHtml(nicknameConflict)}" is already taken. If it was you (other browser, cleared data), you can take it back.</p>
+           <div class="actions"><button type="button" class="secondary" data-resume>It's me, resume this nickname</button></div>`
         : ""
     }
   </form>`;
 }
 
-/** Message d'état du Joueur : ce qu'il peut faire ou ce qu'il attend. */
-function statutJoueur(e) {
-  let texte;
-  if (e.etat === "close") texte = "Étape close. Claude prépare la suite…";
-  else if (e.questions.every((q) => q.monVote !== null)) {
-    texte = "Vous avez répondu à toutes les Questions. En attente de la clôture : vous pouvez encore changer vos Votes.";
-  } else texte = "Votez pour une Proposition par Question (ou abstenez-vous). Votre Vote est modifiable jusqu'à la clôture.";
-  return `<p class="statut" role="status">${texte}</p>`;
+/** Player status message: what they can do or what they are waiting for. */
+function playerStatus(s) {
+  let text;
+  if (s.state === "closed") text = "Step closed. Claude is preparing what comes next…";
+  else if (s.questions.every((q) => q.myVote !== null)) {
+    text = "You have answered every Question. Waiting for the closing: you can still change your Votes.";
+  } else text = "Vote for one Option per Question (or abstain). You can change your Vote until the closing.";
+  return `<p class="status" role="status">${text}</p>`;
 }
 
-/** Indication d'état du Commentaire d'une Question. */
-function statutCommentaire(q) {
-  if (erreursCommentaire.has(q.id)) return erreursCommentaire.get(q.id);
-  const brouillon = brouillons.get(q.id);
-  if (brouillon !== undefined && brouillon !== q.monCommentaire) return "Modifications non enregistrées";
-  return q.monCommentaire ? "✓ Enregistré" : "";
+/** Status indicator for a Question's Comment. */
+function commentStatus(q) {
+  if (commentErrors.has(q.id)) return commentErrors.get(q.id);
+  const draft = drafts.get(q.id);
+  if (draft !== undefined && draft !== q.myComment) return "Unsaved changes";
+  return q.myComment ? "✓ Saved" : "";
 }
 
-function afficherRegles() {
-  el("regles").hidden = !reglesOuvertes;
-  el("bouton-regles").setAttribute("aria-expanded", String(reglesOuvertes));
-  if (!reglesOuvertes) return;
-  el("regles").innerHTML = `<h2>Règles</h2>
+function renderRules() {
+  el("rules").hidden = !rulesOpen;
+  el("rules-button").setAttribute("aria-expanded", String(rulesOpen));
+  if (!rulesOpen) return;
+  el("rules").innerHTML = `<h2>Rules</h2>
     <ul>
-      <li>Claude publie des Questions par Étape. L'Animateur ouvre chaque Étape ; vous votez alors pour une Proposition par Question, ou vous vous abstenez.</li>
-      <li>Les Votes restent masqués jusqu'à la clôture de l'Étape ; vous pouvez changer le vôtre d'ici là.</li>
-      <li>Un Commentaire est transmis à Claude et peut ouvrir de nouvelles Questions ; il ne compte pas comme un Vote.</li>
-      <li>La Proposition retenue est celle qui a le plus de Votes. Sans aucun Vote, c'est la recommandée. En cas de partage des Votes, la Question est renvoyée à l'oral et Claude la repose.</li>
-      <li>Vous gagnez 1 Point si vous avez voté pour la Proposition retenue. Le Tableau et les statistiques de participation sont publiés à la fin de la Séance.</li>
-      <li>Quand les Commentaires montrent qu'aucune Proposition ne convient, l'Animateur peut aussi reposer la Question à l'Étape suivante.</li>
+      <li>Claude publishes Questions in Steps. The Facilitator opens each Step; you then vote for one Option per Question, or abstain.</li>
+      <li>Votes stay hidden until the Step is closed; you can change yours until then.</li>
+      <li>A Comment is passed on to Claude and can open new Questions; it does not count as a Vote.</li>
+      <li>The selected Option is the one with the most Votes. With no Vote at all, it is the recommended one. On a split vote, the Question is settled verbally and Claude re-asks it.</li>
+      <li>You earn 1 Point if you voted for the selected Option. The Scoreboard and participation statistics are published at the end of the Session.</li>
+      <li>When the Comments show that no Option fits, the Facilitator can also re-ask the Question in the next Step.</li>
     </ul>`;
 }
 
-function carteQuestion(etape, q) {
-  const corps = `<div class="corps">${avecReferences(marked.parse(q.corps ?? ""))}</div>`;
-  const entete = `<h2>${intitule(q)}</h2>`;
-  if (etape.etat === "close") {
-    const nonEnvoye = brouillons.get(q.id);
-    const perdu =
-      nonEnvoye !== undefined && nonEnvoye !== q.monCommentaire
-        ? `<p class="erreur-commentaire">Étape close avant l'envoi : copiez votre texte.</p><div class="brouillon">${echapper(nonEnvoye)}</div>`
+function questionCard(step, q) {
+  const body = `<div class="body-text">${withReferences(marked.parse(q.body ?? ""))}</div>`;
+  const title = `<h2>${heading(q)}</h2>`;
+  if (step.state === "closed") {
+    const unsent = drafts.get(q.id);
+    const lost =
+      unsent !== undefined && unsent !== q.myComment
+        ? `<p class="comment-error">Step closed before sending: copy your text.</p><div class="draft">${escapeHtml(unsent)}</div>`
         : "";
-    return `<article class="carte">${entete}${corps}${resultatQuestion(q)}${perdu}</article>`;
+    return `<article class="card">${title}${body}${questionResult(q)}${lost}</article>`;
   }
 
-  const propositions = q.propositions
+  const options = q.options
     .map(
-      (p) => `<label class="proposition ${q.monVote === p.id ? "choisie" : ""}">
-        <input type="radio" name="vote-${q.id}" data-question="${q.id}" value="${echapper(p.id)}" ${q.monVote === p.id ? "checked" : ""} />
-        <span>${avecReferences(echapper(p.libelle))}${p.id === q.recommandee ? '<span class="badge reco">recommandée</span>' : ""}</span>
+      (o) => `<label class="option ${q.myVote === o.id ? "chosen" : ""}">
+        <input type="radio" name="vote-${q.id}" data-question="${q.id}" value="${escapeHtml(o.id)}" ${q.myVote === o.id ? "checked" : ""} />
+        <span>${withReferences(escapeHtml(o.label))}${o.id === q.recommended ? '<span class="badge recommended">recommended</span>' : ""}</span>
       </label>`,
     )
     .join("");
-  const commentaire = brouillons.get(q.id) ?? q.monCommentaire;
-  const repartition = q.repartition
-    ? `<p class="compteur">Répartition : ${q.propositions.map((p) => `${echapper(p.libelle)} ${q.repartition[p.id]}`).join(" · ")}</p>`
+  const comment = drafts.get(q.id) ?? q.myComment;
+  const distribution = q.distribution
+    ? `<p class="counter">Distribution: ${q.options.map((o) => `${escapeHtml(o.label)} ${q.distribution[o.id]}`).join(" · ")}</p>`
     : "";
-  return `<article class="carte">
-    ${entete}${corps}
-    <div class="propositions">${propositions}</div>
+  return `<article class="card">
+    ${title}${body}
+    <div class="options">${options}</div>
     <div class="actions">
-      <button type="button" class="secondaire" data-abstention="${q.id}" ${q.monVote ? "" : "disabled"}>S'abstenir</button>
-      <span class="compteur">${q.votants}/${etat.joueurs} ont voté</span>
+      <button type="button" class="secondary" data-abstain="${q.id}" ${q.myVote ? "" : "disabled"}>Abstain</button>
+      <span class="counter">${q.voters}/${state.players} voted</span>
     </div>
-    ${repartition}
-    <label for="commentaire-${q.id}" class="compteur">Commentaire (transmis à Claude, visible à la clôture)</label>
-    <textarea id="commentaire-${q.id}" data-commentaire="${q.id}" rows="2">${echapper(commentaire)}</textarea>
-    <p class="compteur statut-commentaire ${erreursCommentaire.has(q.id) ? "erreur-commentaire" : ""}" data-statut-commentaire="${q.id}" role="status">${statutCommentaire(q)}</p>
-    ${q.monVote ? `<p class="compteur">Vote enregistré, modifiable jusqu'à la clôture.</p>` : ""}
+    ${distribution}
+    <label for="comment-${q.id}" class="counter">Comment (passed on to Claude, visible at closing)</label>
+    <textarea id="comment-${q.id}" data-comment="${q.id}" rows="2">${escapeHtml(comment)}</textarea>
+    <p class="counter comment-status ${commentErrors.has(q.id) ? "comment-error" : ""}" data-comment-status="${q.id}" role="status">${commentStatus(q)}</p>
+    ${q.myVote ? `<p class="counter">Vote saved, you can change it until the closing.</p>` : ""}
   </article>`;
 }
 
-function resultatQuestion(q) {
-  const r = q.resultat;
-  const total = Object.values(r.repartition).reduce((a, b) => a + b, 0) || 1;
-  const barres = q.propositions
-    .map((p) => {
-      const n = r.repartition[p.id];
-      const retenue = r.statut === "retenue" && r.retenue === p.id;
-      return `<div class="barre ${retenue ? "retenue" : ""}">
-        <div class="piste"><div class="remplie" style="width:${(n / total) * 100}%">
-          ${retenue ? "✓ " : ""}${echapper(p.libelle)}${p.id === q.recommandee ? '<span class="badge reco">recommandée</span>' : ""}
+function questionResult(q) {
+  const r = q.result;
+  const total = Object.values(r.distribution).reduce((a, b) => a + b, 0) || 1;
+  const bars = q.options
+    .map((o) => {
+      const n = r.distribution[o.id];
+      const selected = r.status === "selected" && r.selected === o.id;
+      return `<div class="bar ${selected ? "selected" : ""}">
+        <div class="track"><div class="filled" style="width:${(n / total) * 100}%">
+          ${selected ? "✓ " : ""}${escapeHtml(o.label)}${o.id === q.recommended ? '<span class="badge recommended">recommended</span>' : ""}
         </div></div><span>${n}</span>
       </div>`;
     })
     .join("");
-  const statut =
-    r.statut === "a_reposer"
-      ? `<p class="statut-reposer">${r.partage ? "Partage des Votes : à reprendre à l'oral, Claude reposera cette Question." : "À reposer : Claude reformulera cette Question."}</p>`
+  const status =
+    r.status === "to_reask"
+      ? `<p class="reask-status">${r.split ? "Split vote: to be settled verbally, Claude will re-ask this Question." : "To re-ask: Claude will rephrase this Question."}</p>`
       : "";
-  const commentaires = r.commentaires.length
-    ? `<ul class="commentaires">${r.commentaires
-        .map((c) => `<li><strong>${echapper(c.pseudo)}</strong> : ${echapper(c.texte)}</li>`)
+  const comments = r.comments.length
+    ? `<ul class="comments">${r.comments
+        .map((c) => `<li><strong>${escapeHtml(c.nickname)}</strong>: ${escapeHtml(c.text)}</li>`)
         .join("")}</ul>`
     : "";
-  return `${statut}${barres}<p class="compteur">${r.abstentions} abstention(s)</p>${commentaires}`;
+  return `${status}${bars}<p class="counter">${plural(r.abstentions, "abstention")}</p>${comments}`;
 }
 
-// --- Onglet « Résultats » ------------------------------------------------------------
+// --- "Results" tab ------------------------------------------------------------------------
 
-/** Résultats d'une Étape close : Questions, répartition, Commentaires et Vote du Joueur. */
-function blocResultats(etape) {
-  const questions = etape.questions
+/** Results of a closed Step: Questions, distribution, Comments and the Player's Vote. */
+function resultsBlock(step) {
+  const questions = step.questions
     .map((q) => {
-      const monChoix = q.monVote ? libelleProposition(q, q.monVote) : null;
-      const vote = monChoix ? `Votre Vote : ${echapper(monChoix)}` : "Vous n'avez pas voté sur cette Question.";
-      return `<article class="question-resultat"><h3>${intitule(q)}</h3>${resultatQuestion(q)}<p class="compteur">${vote}</p></article>`;
+      const myChoice = q.myVote ? optionLabel(q, q.myVote) : null;
+      const vote = myChoice ? `Your Vote: ${escapeHtml(myChoice)}` : "You did not vote on this Question.";
+      return `<article class="question-result"><h3>${heading(q)}</h3>${questionResult(q)}<p class="counter">${vote}</p></article>`;
     })
     .join("");
-  return `<section class="carte"><h2>Résultats de l'Étape ${etape.numero}</h2>${questions}</section>`;
+  return `<section class="card"><h2>Results of Step ${step.number}</h2>${questions}</section>`;
 }
 
-function afficherResultats() {
-  if (!etat?.seance || onglet !== "resultats") {
-    el("resultats").innerHTML = "";
+function renderResults() {
+  if (!state?.session || tab !== "results") {
+    el("results").innerHTML = "";
     return;
   }
-  const etapes = etat.resultats ?? [];
-  el("resultats").innerHTML = etapes.length
-    ? etapes.map(blocResultats).join("")
-    : `<div class="carte">Aucune Étape n'est encore close.</div>`;
+  const steps = state.results ?? [];
+  el("results").innerHTML = steps.length
+    ? steps.map(resultsBlock).join("")
+    : `<div class="card">No Step has been closed yet.</div>`;
 }
 
-// --- Tableau, statistiques, podium ----------------------------------------------------
+// --- Scoreboard, statistics, podium ----------------------------------------------------
 
-function afficherTableau() {
-  const disponible = Boolean(etat?.tableau);
-  el("bouton-tableau").hidden = !disponible;
-  const visible = disponible && tableauOuvert;
-  el("tableau").hidden = !visible;
-  el("bouton-tableau").setAttribute("aria-expanded", String(visible));
+function renderScoreboard() {
+  const available = Boolean(state?.scoreboard);
+  el("scoreboard-button").hidden = !available;
+  const visible = available && scoreboardOpen;
+  el("scoreboard").hidden = !visible;
+  el("scoreboard-button").setAttribute("aria-expanded", String(visible));
   if (!visible) return;
-  el("tableau").innerHTML = tableauHtml();
+  el("scoreboard").innerHTML = scoreboardHtml();
 }
 
-function tableauHtml() {
-  const stats = new Map((etat.statistiques ?? []).map((s) => [s.pseudo, s]));
-  const lignes = etat.tableau
+function scoreboardHtml() {
+  const stats = new Map((state.statistics ?? []).map((s) => [s.nickname, s]));
+  const rows = state.scoreboard
     .map((l, i) => {
-      const s = stats.get(l.pseudo);
+      const s = stats.get(l.nickname);
       return `<tr>
-        <td>${i + 1}</td><td>${echapper(l.pseudo)}${l.pseudo === joueur()?.pseudo ? " (moi)" : ""}</td>
-        <td class="nombre"><strong>${l.total}</strong></td>
-        <td class="nombre">${l.gainEtape ? `<span class="gain">+${l.gainEtape}</span>` : ""}</td>
-        <td class="nombre">${s?.votes ?? 0}</td><td class="nombre">${s?.commentaires ?? 0}</td><td class="nombre">${s?.abstentions ?? 0}</td>
+        <td>${i + 1}</td><td>${escapeHtml(l.nickname)}${l.nickname === player()?.nickname ? " (me)" : ""}</td>
+        <td class="num"><strong>${l.total}</strong></td>
+        <td class="num">${l.stepGain ? `<span class="gain">+${l.stepGain}</span>` : ""}</td>
+        <td class="num">${s?.votes ?? 0}</td><td class="num">${s?.comments ?? 0}</td><td class="num">${s?.abstentions ?? 0}</td>
       </tr>`;
     })
     .join("");
-  return `<h2>Tableau des scores</h2>
-    <div class="defile"><table><thead><tr><th>#</th><th>Joueur</th><th class="nombre">Points</th><th class="nombre">Étape</th>
-    <th class="nombre">Votes</th><th class="nombre">Commentaires</th><th class="nombre">Abstentions</th></tr></thead><tbody>${lignes}</tbody></table></div>`;
+  return `<h2>Scoreboard</h2>
+    <div class="scroll"><table><thead><tr><th>#</th><th>Player</th><th class="num">Points</th><th class="num">Step</th>
+    <th class="num">Votes</th><th class="num">Comments</th><th class="num">Abstentions</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 function podium() {
-  const [p1, p2, p3] = etat.tableau ?? [];
-  const marche = (l, rang) =>
-    l ? `<div class="marche p${rang}"><strong>${echapper(l.pseudo)}</strong>${l.total} pt(s)<br />${rang}<sup>e</sup></div>` : "";
-  return `<div class="carte"><h2>Fin de la Séance</h2>
-    <div class="podium">${marche(p2, 2)}${marche(p1, 1)}${marche(p3, 3)}</div>
-    <div class="defile">${etat.tableau ? tableauHtml() : ""}</div></div>
-    ${etat.seance.recapitulatif ? `<article class="carte corps">${marked.parse(etat.seance.recapitulatif)}</article>` : ""}`;
+  const [p1, p2, p3] = state.scoreboard ?? [];
+  const suffix = { 1: "st", 2: "nd", 3: "rd" };
+  const place = (l, rank) =>
+    l ? `<div class="place p${rank}"><strong>${escapeHtml(l.nickname)}</strong>${plural(l.total, "pt")}<br />${rank}${suffix[rank]}</div>` : "";
+  return `<div class="card"><h2>End of the Session</h2>
+    <div class="podium">${place(p2, 2)}${place(p1, 1)}${place(p3, 3)}</div>
+    <div class="scroll">${state.scoreboard ? scoreboardHtml() : ""}</div></div>
+    ${state.session.summary ? `<article class="card body-text">${marked.parse(state.session.summary)}</article>` : ""}`;
 }
 
-// --- Pilotage : Ouverture et clôture (Animateur et Co-animateurs) ------------------------
+// --- Controls: Opening and closing (Facilitator and Co-facilitators) -----------------------
 
-function afficherPilotage() {
-  const pilotage = el("pilotage");
-  const e = etat?.etape;
-  if (!peutPiloter() || !etat?.seance || etat.seance.terminee || !e || e.etat === "close") {
-    pilotage.hidden = true;
-    pilotage.innerHTML = "";
+function renderControls() {
+  const controls = el("controls");
+  const s = state?.step;
+  if (!canControl() || !state?.session || state.session.ended || !s || s.state === "closed") {
+    controls.hidden = true;
+    controls.innerHTML = "";
     return;
   }
-  if (e.etat === "en_attente") {
-    pilotage.hidden = false;
-    pilotage.innerHTML = `<h2>Étape ${e.numero} prête</h2>
-      <p class="compteur">Claude a publié l'Étape. Les Joueurs ne voient pas encore ses Questions : ouvrez-la quand le groupe est prêt${e.numero === 1 ? " (le Prompt initial et la répartition en direct seront alors figés)" : ""}.</p>
-      <div class="actions"><button type="button" id="ouvrir">Ouvrir l'Étape ${e.numero}</button></div>`;
+  if (s.state === "pending") {
+    controls.hidden = false;
+    controls.innerHTML = `<h2>Step ${s.number} ready</h2>
+      <p class="counter">Claude has published the Step. Players cannot see its Questions yet: open it when the group is ready${s.number === 1 ? " (the Initial prompt and the live distribution will then be locked)" : ""}.</p>
+      <div class="actions"><button type="button" id="open-step">Open Step ${s.number}</button></div>`;
     return;
   }
-  // Conserver les choix en cours à travers les rafraîchissements.
-  const coches = new Set([...pilotage.querySelectorAll("[data-reposer]:checked")].map((c) => c.dataset.reposer));
-  const choix = Object.fromEntries([...pilotage.querySelectorAll("[data-departage]")].map((s) => [s.dataset.departage, s.value]));
-  const reposer = e.questions
+  // Keep the choices in progress across refreshes.
+  const checked = new Set([...controls.querySelectorAll("[data-reask]:checked")].map((c) => c.dataset.reask));
+  const choices = Object.fromEntries([...controls.querySelectorAll("[data-tiebreak]")].map((x) => [x.dataset.tiebreak, x.value]));
+  const reask = s.questions
     .map(
-      (q) => `<label class="compteur"><input type="checkbox" data-reposer="${q.id}" style="width:auto" />
-          ${intitule(q)} (${q.votants}/${etat.joueurs} ont voté) : aucune Proposition ne convient, la reposer</label>`,
+      (q) => `<label class="counter"><input type="checkbox" data-reask="${q.id}" style="width:auto" />
+          ${heading(q)} (${q.voters}/${state.players} voted): no Option fits, re-ask it</label>`,
     )
     .join("<br />");
-  const departages = aDepartager
-    .map(({ question, exAequo }) => {
-      const q = e.questions.find((x) => x.id === question);
-      const options = exAequo
-        .map((id) => `<option value="${echapper(id)}">${echapper(libelleProposition(q, id))}</option>`)
+  const tiebreaks = toBreak
+    .map(({ question, tiedOptions }) => {
+      const q = s.questions.find((x) => x.id === question);
+      const options = tiedOptions
+        .map((id) => `<option value="${escapeHtml(id)}">${escapeHtml(optionLabel(q, id))}</option>`)
         .join("");
-      return `<label class="compteur">Départager « ${intitule(q)} »
-          <select data-departage="${question}">${options}</select></label>`;
+      return `<label class="counter">Break the tie on "${heading(q)}"
+          <select data-tiebreak="${question}">${options}</select></label>`;
     })
     .join("");
-  pilotage.hidden = false;
-  pilotage.innerHTML = `<h2>Clôture de l'Étape ${e.numero}</h2>
-    <p class="compteur">Ne cochez que les Questions dont aucune Proposition ne convient ; les autres sont tranchées par les Votes (un partage est renvoyé à l'oral). Dans le cas normal, ne cochez rien.</p>
-    <div>${reposer}</div>${departages}
-    <div class="actions"><button type="button" id="clore">Clore l'Étape</button></div>`;
-  for (const c of pilotage.querySelectorAll("[data-reposer]")) c.checked = coches.has(c.dataset.reposer);
-  for (const s of pilotage.querySelectorAll("[data-departage]")) if (choix[s.dataset.departage]) s.value = choix[s.dataset.departage];
+  controls.hidden = false;
+  controls.innerHTML = `<h2>Closing of Step ${s.number}</h2>
+    <p class="counter">Only tick the Questions where no Option fits; the others are settled by the Votes (a split vote is settled verbally). Normally, tick nothing.</p>
+    <div>${reask}</div>${tiebreaks}
+    <div class="actions"><button type="button" id="close-step">Close the Step</button></div>`;
+  for (const c of controls.querySelectorAll("[data-reask]")) c.checked = checked.has(c.dataset.reask);
+  for (const x of controls.querySelectorAll("[data-tiebreak]")) if (choices[x.dataset.tiebreak]) x.value = choices[x.dataset.tiebreak];
 }
 
-// --- Onglet « Animateur » -----------------------------------------------------------------
+// --- "Facilitator" tab -----------------------------------------------------------------------
 
-/** Ce que l'Animateur a à faire, déduit de l'état de la Séance. */
-function prochaineAction() {
-  let texte;
-  if (!etat?.seance) {
-    texte = "Lancez le skill <code>/grilling-arena</code> dans Claude Code pour démarrer la Séance.";
-  } else if (etat.seance.terminee) {
-    texte = "Séance terminée. Le Récapitulatif est dans l'onglet « Étape en cours » ; fermez le serveur avec Ctrl+C.";
-  } else if (!etat.etape) {
-    texte = "Attendez que Claude publie la première Étape.";
-  } else if (etat.etape.etat === "en_attente") {
-    texte = `Ouvrir l'Étape ${etat.etape.numero} (commande en haut de page) quand le groupe est prêt.`;
-  } else if (etat.etape.etat === "ouverte") {
-    texte = "Clore l'Étape (commandes en haut de page) quand tout le monde a voté.";
+/** What the Facilitator has to do, deduced from the Session state. */
+function nextAction() {
+  let text;
+  if (!state?.session) {
+    text = "Run the <code>/grilling-arena</code> skill in Claude Code to start the Session.";
+  } else if (state.session.ended) {
+    text = "Session ended. The Summary is in the \"Current Step\" tab; stop the server with Ctrl+C.";
+  } else if (!state.step) {
+    text = "Wait for Claude to publish the first Step.";
+  } else if (state.step.state === "pending") {
+    text = `Open Step ${state.step.number} (control at the top of the page) when the group is ready.`;
+  } else if (state.step.state === "open") {
+    text = "Close the Step (controls at the top of the page) when everyone has voted.";
   } else {
-    texte = "Claude prépare la suite : l'Étape suivante, ou la fin de la Séance.";
+    text = "Claude is preparing what comes next: the next Step, or the end of the Session.";
   }
-  return `<p class="statut" role="status"><strong>Prochaine action :</strong> ${texte}</p>`;
+  return `<p class="status" role="status"><strong>Next action:</strong> ${text}</p>`;
 }
 
-async function chargerInfos() {
-  if (infos || infosEnCours || !jeton) return;
-  infosEnCours = true;
-  const { ok, donnees } = await api("GET", "/api/infos");
-  infosEnCours = false;
-  if (ok) infos = donnees.urlsJoueurs;
-  else jetonInvalide = true;
-  afficherAnimateur();
+async function loadInfo() {
+  if (info || infoLoading || !token) return;
+  infoLoading = true;
+  const { ok, data } = await api("GET", "/api/info");
+  infoLoading = false;
+  if (ok) info = data.playerUrls;
+  else invalidToken = true;
+  renderFacilitator();
 }
 
-function afficherAnimateur() {
-  const zone = el("animateur");
-  if (!jeton || zone.hidden) return;
-  if (jetonInvalide) {
-    zone.innerHTML = `<p>Jeton Animateur invalide. Ouvrez le lien « Animateur » affiché dans le terminal où tourne le serveur (<code>make start</code>), ou lu dans <code>seances/.jeton</code>.</p>`;
+function renderFacilitator() {
+  const area = el("facilitator");
+  if (!token || area.hidden) return;
+  if (invalidToken) {
+    area.innerHTML = `<p>Invalid Facilitator token. Open the "Facilitator" link shown in the terminal where the server is running (<code>make start</code>), or read it from <code>sessions/.token</code>.</p>`;
     return;
   }
-  if (!infos) {
-    chargerInfos();
+  if (!info) {
+    loadInfo();
     return;
   }
-  const [url] = infos;
+  const [url] = info;
   const qr = qrcode(0, "M");
   qr.addData(url ?? location.origin);
   qr.make();
 
-  const seance = etat?.seance;
-  const verrouille = seance?.promptVerrouille === true;
-  let corps = "";
-  if (seance) {
-    const prompt = verrouille
-      ? `<h3>Prompt initial</h3><p class="compteur">Figé depuis l'Ouverture de l'Étape 1.</p><div class="corps">${marked.parse(seance.prompt ?? "")}</div>`
-      : `<h3>Prompt initial</h3>
-         <label for="prompt-edition" class="compteur">Visible par tous les Joueurs jusqu'à l'Ouverture de l'Étape 1 ; Markdown. Sert de point de départ au grilling.</label>
-         <textarea id="prompt-edition" rows="6">${echapper(promptBrouillon ?? seance.prompt ?? "")}</textarea>
-         <div class="actions"><button type="button" id="enregistrer-prompt">Enregistrer le prompt</button></div>`;
-    const reglage = `<h3>Répartition des Votes</h3>
-      <label><input type="checkbox" id="repartition-en-direct" style="width:auto" ${seance.repartitionEnDirect ? "checked" : ""} ${verrouille ? "disabled" : ""} />
-        Afficher la répartition en direct, à partir de la moitié des votants${verrouille ? " (figé depuis l'Ouverture de l'Étape 1)" : ""}</label>`;
-    const publication = `<h3>Tableau et statistiques</h3>
-      ${etat.tableau ? tableauHtml() : ""}
-      <div class="actions"><button type="button" id="publier-stats" ${seance.statistiquesPubliees || seance.terminee ? "disabled" : ""}>
-        ${seance.statistiquesPubliees || seance.terminee ? "Statistiques publiées" : "Publier les statistiques aux Joueurs"}</button></div>`;
-    const participants = (etat.participants ?? []).length
-      ? `<h3>Co-animateurs</h3>
-         <p class="compteur">Un Co-animateur peut ouvrir et clore les Étapes à votre place. Attention : quiconque reprend son pseudo obtient ses droits.</p>
-         <ul class="liste-participants">${etat.participants
+  const session = state?.session;
+  const locked = session?.promptLocked === true;
+  let content = "";
+  if (session) {
+    const prompt = locked
+      ? `<h3>Initial prompt</h3><p class="counter">Locked since the Opening of Step 1.</p><div class="body-text">${marked.parse(session.prompt ?? "")}</div>`
+      : `<h3>Initial prompt</h3>
+         <label for="prompt-edit" class="counter">Visible to all Players until the Opening of Step 1; Markdown. Used as the starting point of the grilling.</label>
+         <textarea id="prompt-edit" rows="6">${escapeHtml(promptDraft ?? session.prompt ?? "")}</textarea>
+         <div class="actions"><button type="button" id="save-prompt">Save the prompt</button></div>`;
+    const setting = `<h3>Vote distribution</h3>
+      <label><input type="checkbox" id="live-distribution" style="width:auto" ${session.liveDistribution ? "checked" : ""} ${locked ? "disabled" : ""} />
+        Show the live distribution, once half of the Players have voted${locked ? " (locked since the Opening of Step 1)" : ""}</label>`;
+    const publication = `<h3>Scoreboard and statistics</h3>
+      ${state.scoreboard ? scoreboardHtml() : ""}
+      <div class="actions"><button type="button" id="publish-stats" ${session.statisticsPublished || session.ended ? "disabled" : ""}>
+        ${session.statisticsPublished || session.ended ? "Statistics published" : "Publish the statistics to Players"}</button></div>`;
+    const participants = (state.participants ?? []).length
+      ? `<h3>Co-facilitators</h3>
+         <p class="counter">A Co-facilitator can open and close Steps in your place. Be careful: anyone who takes back their nickname gets their rights.</p>
+         <ul class="participant-list">${state.participants
            .map(
-             (p) => `<li><span>${echapper(p.pseudo)}${p.coAnimateur ? ' <span class="badge reco">co-animateur</span>' : ""}</span>
-               <button type="button" class="secondaire" data-coanimateur="${p.id}" data-actif="${p.coAnimateur}">${p.coAnimateur ? "Révoquer" : "Désigner"}</button></li>`,
+             (p) => `<li><span>${escapeHtml(p.nickname)}${p.coFacilitator ? ' <span class="badge recommended">co-facilitator</span>' : ""}</span>
+               <button type="button" class="secondary" data-cofacilitator="${p.id}" data-active="${p.coFacilitator}">${p.coFacilitator ? "Revoke" : "Appoint"}</button></li>`,
            )
            .join("")}</ul>`
       : "";
-    corps = prompt + reglage + publication + participants;
+    content = prompt + setting + publication + participants;
   }
 
-  zone.innerHTML = `<h2>Animateur</h2>
-    ${prochaineAction()}
-    <h3>Accès des Joueurs</h3>
-    <div class="acces"><div class="qr">${qr.createSvgTag({ cellSize: 4, margin: 0 })}</div>
-    <div>${infos.map((u) => `<code>${echapper(u)}</code>`).join("<br />")}</div></div>
-    ${corps}`;
+  area.innerHTML = `<h2>Facilitator</h2>
+    ${nextAction()}
+    <h3>Player access</h3>
+    <div class="access"><div class="qr">${qr.createSvgTag({ cellSize: 4, margin: 0 })}</div>
+    <div>${info.map((u) => `<code>${escapeHtml(u)}</code>`).join("<br />")}</div></div>
+    ${content}`;
 }
 
 // --- Actions -------------------------------------------------------------------------------------
 
-async function enregistrerPrompt() {
-  const { ok, donnees } = await api("PUT", "/api/seance/prompt", { prompt: promptBrouillon ?? etat.seance.prompt });
-  if (!ok) return signaler(donnees.erreur ?? "Prompt refusé");
-  promptBrouillon = null;
-  signaler("Prompt enregistré");
-  await rafraichir({ forcer: true });
+async function savePrompt() {
+  const { ok, data } = await api("PUT", "/api/session/prompt", { prompt: promptDraft ?? state.session.prompt });
+  if (!ok) return notify(data.error ?? "Prompt refused");
+  promptDraft = null;
+  notify("Prompt saved");
+  await refresh({ force: true });
 }
 
-async function repondre(questionId, reponse, options) {
-  const { ok, statut, donnees } = await api(
+async function answer(questionId, body, options) {
+  const { ok, status, data } = await api(
     "PUT",
-    `/api/etapes/${etat.etape.id}/questions/${questionId}/reponse`,
-    { joueur: joueur().id, ...reponse },
+    `/api/steps/${state.step.id}/questions/${questionId}/answer`,
+    { player: player().id, ...body },
     options,
   );
-  if (!ok && !(statut === 409 && "commentaire" in reponse)) signaler(donnees.erreur ?? "Réponse refusée");
-  return { ok, statut };
+  if (!ok && !(status === 409 && "comment" in body)) notify(data.error ?? "Answer refused");
+  return { ok, status };
 }
 
-async function rejoindre(reprendre) {
-  const pseudo = el("pseudo")?.value ?? pseudoSaisi;
-  const { ok, statut, donnees } = await api("POST", "/api/joueurs", { pseudo, reprendre });
-  if (statut === 409 && !reprendre && /déjà pris/.test(donnees.erreur ?? "")) {
-    pseudoSaisi = pseudo;
-    conflitPseudo = pseudo.trim();
-    return afficher();
+async function join(resume) {
+  const nickname = el("nickname")?.value ?? typedNickname;
+  const { ok, status, data } = await api("POST", "/api/players", { nickname, resume });
+  if (status === 409 && !resume && /already taken/.test(data.error ?? "")) {
+    typedNickname = nickname;
+    nicknameConflict = nickname.trim();
+    return render();
   }
-  if (!ok) return signaler(donnees.erreur ?? "Impossible de rejoindre");
-  conflitPseudo = null;
-  pseudoSaisi = "";
-  memoriser(donnees);
-  rafraichir({ forcer: true });
+  if (!ok) return notify(data.error ?? "Could not join");
+  nicknameConflict = null;
+  typedNickname = "";
+  remember(data);
+  refresh({ force: true });
 }
 
-/** Enregistre le Commentaire d'une Question : à la frappe (avec délai), à la sortie du champ, à la fermeture de la page. */
-async function enregistrerCommentaire(questionId, options) {
-  clearTimeout(minuteurs.get(questionId));
-  minuteurs.delete(questionId);
-  const texte = brouillons.get(questionId);
-  if (texte === undefined || !joueur()) return;
-  const question = etat?.etape?.questions.find((x) => x.id === questionId);
-  if (question && texte === question.monCommentaire) {
-    brouillons.delete(questionId);
+/** Saves a Question's Comment: while typing (with a delay), when leaving the field, when closing the page. */
+async function saveComment(questionId, options) {
+  clearTimeout(timers.get(questionId));
+  timers.delete(questionId);
+  const text = drafts.get(questionId);
+  if (text === undefined || !player()) return;
+  const question = state?.step?.questions.find((x) => x.id === questionId);
+  if (question && text === question.myComment) {
+    drafts.delete(questionId);
     return;
   }
-  if (etat?.etape?.etat !== "ouverte") {
-    erreursCommentaire.set(questionId, "Étape close avant l'envoi : copiez votre texte.");
-    return afficherStatutCommentaire(questionId);
+  if (state?.step?.state !== "open") {
+    commentErrors.set(questionId, "Step closed before sending: copy your text.");
+    return renderCommentStatus(questionId);
   }
-  const { ok, statut } = await repondre(questionId, { commentaire: texte }, options);
+  const { ok, status } = await answer(questionId, { comment: text }, options);
   if (!ok) {
-    if (statut === 409) erreursCommentaire.set(questionId, "Étape close avant l'envoi : copiez votre texte.");
-    await rafraichir({ forcer: true });
+    if (status === 409) commentErrors.set(questionId, "Step closed before sending: copy your text.");
+    await refresh({ force: true });
     return;
   }
-  erreursCommentaire.delete(questionId);
-  if (brouillons.get(questionId) === texte) brouillons.delete(questionId);
+  commentErrors.delete(questionId);
+  if (drafts.get(questionId) === text) drafts.delete(questionId);
   if (options?.keepalive) return;
-  await rafraichir({ forcer: true });
+  await refresh({ force: true });
 }
 
-function afficherStatutCommentaire(questionId) {
-  const question = etat?.etape?.questions.find((x) => x.id === questionId);
-  const statut = document.querySelector(`[data-statut-commentaire="${questionId}"]`);
-  if (question && statut) {
-    statut.textContent = statutCommentaire(question);
-    statut.classList.toggle("erreur-commentaire", erreursCommentaire.has(questionId));
+function renderCommentStatus(questionId) {
+  const question = state?.step?.questions.find((x) => x.id === questionId);
+  const status = document.querySelector(`[data-comment-status="${questionId}"]`);
+  if (question && status) {
+    status.textContent = commentStatus(question);
+    status.classList.toggle("comment-error", commentErrors.has(questionId));
   } else if (!question) {
-    afficher();
+    render();
   }
 }
 
-/** Envoie sans attendre tous les Commentaires en suspens (page masquée ou fermée). */
-function viderBrouillons() {
-  for (const questionId of [...brouillons.keys()]) enregistrerCommentaire(questionId, { keepalive: true });
+/** Sends every pending Comment without waiting (page hidden or closed). */
+function flushDrafts() {
+  for (const questionId of [...drafts.keys()]) saveComment(questionId, { keepalive: true });
 }
 
 document.addEventListener("submit", async (ev) => {
-  if (ev.target.id !== "form-rejoindre") return;
+  if (ev.target.id !== "join-form") return;
   ev.preventDefault();
-  rejoindre(false);
+  join(false);
 });
 
 document.addEventListener("change", async (ev) => {
   const q = ev.target.dataset.question;
   if (q) {
-    await repondre(q, { proposition: ev.target.value });
-    return rafraichir({ forcer: true });
+    await answer(q, { option: ev.target.value });
+    return refresh({ force: true });
   }
-  if (ev.target.id === "repartition-en-direct") {
-    const { ok, donnees } = await api("PUT", "/api/seance/repartition-en-direct", { actif: ev.target.checked });
-    if (!ok) signaler(donnees.erreur ?? "Réglage refusé");
-    await rafraichir({ forcer: true });
+  if (ev.target.id === "live-distribution") {
+    const { ok, data } = await api("PUT", "/api/session/live-distribution", { enabled: ev.target.checked });
+    if (!ok) notify(data.error ?? "Setting refused");
+    await refresh({ force: true });
   }
 });
 
 document.addEventListener("input", (ev) => {
-  if (ev.target.id === "prompt-edition") {
-    promptBrouillon = ev.target.value;
+  if (ev.target.id === "prompt-edit") {
+    promptDraft = ev.target.value;
     return;
   }
-  if (ev.target.id === "pseudo") {
-    pseudoSaisi = ev.target.value;
+  if (ev.target.id === "nickname") {
+    typedNickname = ev.target.value;
     return;
   }
-  const q = ev.target.dataset.commentaire;
+  const q = ev.target.dataset.comment;
   if (!q) return;
-  brouillons.set(q, ev.target.value);
-  erreursCommentaire.delete(q);
-  afficherStatutCommentaire(q);
-  clearTimeout(minuteurs.get(q));
-  minuteurs.set(q, setTimeout(() => enregistrerCommentaire(q), DELAI_ENREGISTREMENT));
+  drafts.set(q, ev.target.value);
+  commentErrors.delete(q);
+  renderCommentStatus(q);
+  clearTimeout(timers.get(q));
+  timers.set(q, setTimeout(() => saveComment(q), SAVE_DELAY));
 });
 
-// Un redessin entre l'appui et le relâchement ferait perdre le clic : on le retarde.
-document.addEventListener("pointerdown", () => (pointeurEnfonce = true));
+// A redraw between press and release would lose the click: it is delayed.
+document.addEventListener("pointerdown", () => (pointerDown = true));
 for (const type of ["pointerup", "pointercancel"]) {
   document.addEventListener(type, () => {
-    pointeurEnfonce = false;
+    pointerDown = false;
     setTimeout(() => {
-      if (renduEnAttente && !pointeurEnfonce) {
-        renduEnAttente = false;
-        afficher();
+      if (renderPending && !pointerDown) {
+        renderPending = false;
+        render();
       }
     }, 50);
   });
 }
 
-// Le Commentaire s'enregistre aussi quand on quitte le champ, change d'application ou ferme la page.
+// The Comment is also saved when leaving the field, switching apps or closing the page.
 document.addEventListener("focusout", (ev) => {
-  const q = ev.target.dataset?.commentaire;
-  if (q && brouillons.has(q)) enregistrerCommentaire(q);
+  const q = ev.target.dataset?.comment;
+  if (q && drafts.has(q)) saveComment(q);
 });
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden) viderBrouillons();
+  if (document.hidden) flushDrafts();
 });
-window.addEventListener("pagehide", viderBrouillons);
+window.addEventListener("pagehide", flushDrafts);
 
-/** Un seul infobulle de référence ouverte à la fois (toucher sur téléphone, où il n'y a pas de survol). */
-function basculerReference(ref) {
-  const ouvrir = ref && !ref.classList.contains("ouverte");
-  for (const autre of document.querySelectorAll(".ref.ouverte")) autre.classList.remove("ouverte");
-  if (ouvrir) ref.classList.add("ouverte");
+/** Only one reference tooltip open at a time (tap on phones, where there is no hover). */
+function toggleReference(ref) {
+  const open = ref && !ref.classList.contains("open");
+  for (const other of document.querySelectorAll(".ref.open")) other.classList.remove("open");
+  if (open) ref.classList.add("open");
 }
 
 document.addEventListener("click", async (ev) => {
-  const cible = ev.target instanceof Element ? ev.target : null;
-  if (!cible) return;
-  basculerReference(cible.closest(".ref"));
-  const d = cible.dataset;
-  if (d.onglet) {
-    onglet = d.onglet;
-    return afficher();
+  const target = ev.target instanceof Element ? ev.target : null;
+  if (!target) return;
+  toggleReference(target.closest(".ref"));
+  const d = target.dataset;
+  if (d.tab) {
+    tab = d.tab;
+    return render();
   }
-  if (d.abstention) {
-    await repondre(d.abstention, { proposition: null });
-    return rafraichir({ forcer: true });
+  if (d.abstain) {
+    await answer(d.abstain, { option: null });
+    return refresh({ force: true });
   }
-  if (d.reprendre !== undefined) return rejoindre(true);
-  if (d.coanimateur) {
-    const methode = d.actif === "true" ? "DELETE" : "PUT";
-    const { ok, donnees } = await api(methode, `/api/seance/co-animateurs/${d.coanimateur}`);
-    if (!ok) signaler(donnees.erreur ?? "Désignation refusée");
-    return rafraichir({ forcer: true });
+  if (d.resume !== undefined) return join(true);
+  if (d.cofacilitator) {
+    const method = d.active === "true" ? "DELETE" : "PUT";
+    const { ok, data } = await api(method, `/api/session/co-facilitators/${d.cofacilitator}`);
+    if (!ok) notify(data.error ?? "Appointment refused");
+    return refresh({ force: true });
   }
-  if (cible.id === "bouton-regles") {
-    reglesOuvertes = !reglesOuvertes;
-    return afficher();
+  if (target.id === "rules-button") {
+    rulesOpen = !rulesOpen;
+    return render();
   }
-  if (cible.id === "bouton-tableau") {
-    tableauOuvert = !tableauOuvert;
-    return afficher();
+  if (target.id === "scoreboard-button") {
+    scoreboardOpen = !scoreboardOpen;
+    return render();
   }
-  if (cible.id === "enregistrer-prompt") return enregistrerPrompt();
-  if (cible.id === "publier-stats") {
-    const { ok, donnees } = await api("POST", "/api/seance/statistiques", {});
-    if (!ok) return signaler(donnees.erreur ?? "Publication refusée");
-    signaler("Statistiques publiées");
-    return rafraichir({ forcer: true });
+  if (target.id === "save-prompt") return savePrompt();
+  if (target.id === "publish-stats") {
+    const { ok, data } = await api("POST", "/api/session/statistics", {});
+    if (!ok) return notify(data.error ?? "Publication refused");
+    notify("Statistics published");
+    return refresh({ force: true });
   }
-  if (cible.id === "ouvrir") {
-    const { ok, donnees } = await api("POST", `/api/etapes/${etat.etape.id}/ouverture`, {});
-    if (!ok) signaler(donnees.erreur ?? "Ouverture refusée");
-    return rafraichir({ forcer: true });
+  if (target.id === "open-step") {
+    const { ok, data } = await api("POST", `/api/steps/${state.step.id}/opening`, {});
+    if (!ok) notify(data.error ?? "Opening refused");
+    return refresh({ force: true });
   }
-  if (cible.id === "clore") {
-    const aReposer = [...document.querySelectorAll("[data-reposer]:checked")].map((c) => c.dataset.reposer);
-    const departages = Object.fromEntries(
-      [...document.querySelectorAll("[data-departage]")].map((s) => [s.dataset.departage, s.value]),
+  if (target.id === "close-step") {
+    const toReask = [...document.querySelectorAll("[data-reask]:checked")].map((c) => c.dataset.reask);
+    const tiebreaks = Object.fromEntries(
+      [...document.querySelectorAll("[data-tiebreak]")].map((x) => [x.dataset.tiebreak, x.value]),
     );
-    const { ok, statut, donnees } = await api("POST", `/api/etapes/${etat.etape.id}/cloture`, { aReposer, departages });
-    if (statut === 409 && donnees.aDepartager) {
-      aDepartager = donnees.aDepartager;
-      signaler("Ex æquo : choisis la Proposition retenue, puis clos à nouveau.");
-      return afficher();
+    const { ok, status, data } = await api("POST", `/api/steps/${state.step.id}/closing`, { tiebreaks, toReask });
+    if (status === 409 && data.tied) {
+      toBreak = data.tied;
+      notify("Tie: choose the selected Option, then close again.");
+      return render();
     }
-    if (!ok) return signaler(donnees.erreur ?? "Clôture refusée");
-    aDepartager = [];
-    return rafraichir({ forcer: true });
+    if (!ok) return notify(data.error ?? "Closing refused");
+    toBreak = [];
+    return refresh({ force: true });
   }
 });
 
-// --- Temps réel -----------------------------------------------------------------------------------------
+// --- Real time --------------------------------------------------------------------------------------
 
-const flux = new EventSource("/api/evenements");
-flux.addEventListener("changement", () => rafraichir());
-flux.addEventListener("open", () => rafraichir());
-// Relevé périodique : le flux temps réel peut ne pas passer (tunnel, réseau mobile).
+const stream = new EventSource("/api/events");
+stream.addEventListener("change", () => refresh());
+stream.addEventListener("open", () => refresh());
+// Periodic fetch: the real-time stream may not get through (tunnel, mobile network).
 setInterval(() => {
-  if (!document.hidden) rafraichir();
+  if (!document.hidden) refresh();
 }, 5000);
-rafraichir();
+refresh();

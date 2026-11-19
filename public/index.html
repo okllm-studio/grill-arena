@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="fr">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -9,25 +9,25 @@
     <script src="/vendor/qrcode.js"></script>
   </head>
   <body>
-    <header class="entete">
+    <header class="header-bar">
       <div>
-        <h1 id="titre">Grill Arena</h1>
-        <p id="avancement" class="avancement"></p>
+        <h1 id="title">Grill Arena</h1>
+        <p id="progress" class="progress"></p>
       </div>
-      <div class="boutons">
-        <button id="bouton-regles" class="secondaire" type="button" aria-expanded="false" aria-controls="regles">Règles</button>
-        <button id="bouton-tableau" class="secondaire" type="button" aria-expanded="false" aria-controls="tableau" hidden>Tableau des scores</button>
+      <div class="buttons">
+        <button id="rules-button" class="secondary" type="button" aria-expanded="false" aria-controls="rules">Rules</button>
+        <button id="scoreboard-button" class="secondary" type="button" aria-expanded="false" aria-controls="scoreboard" hidden>Scoreboard</button>
       </div>
     </header>
 
-    <!-- Pilotage collant : Ouverture et clôture restent accessibles en haut de page, quel que soit l'onglet. -->
-    <section id="pilotage" class="animateur pilotage" hidden></section>
-    <section id="regles" class="panneau" hidden></section>
-    <section id="tableau" class="panneau" hidden></section>
-    <nav id="onglets" class="onglets" role="tablist" aria-label="Sections" hidden></nav>
-    <main id="contenu"></main>
-    <section id="resultats" hidden></section>
-    <section id="animateur" class="animateur" hidden></section>
+    <!-- Sticky controls: Opening and closing stay reachable at the top of the page, whatever the tab. -->
+    <section id="controls" class="facilitator controls" hidden></section>
+    <section id="rules" class="panel" hidden></section>
+    <section id="scoreboard" class="panel" hidden></section>
+    <nav id="tabs" class="tabs" role="tablist" aria-label="Sections" hidden></nav>
+    <main id="content"></main>
+    <section id="results" hidden></section>
+    <section id="facilitator" class="facilitator" hidden></section>
 
     <p id="message" class="message" role="status" aria-live="polite"></p>
     <script type="module" src="/app.js"></script>

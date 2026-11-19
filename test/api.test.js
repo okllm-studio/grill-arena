@@ -1,863 +1,906 @@
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { demarrer } from "../src/serveur.js";
+import { start } from "../src/server.js";
 
-const JETON = "jeton-de-test";
+const TOKEN = "test-token";
 
-let dossier;
-let serveur;
+let dir;
+let server;
 
 beforeEach(async () => {
-  dossier = await mkdtemp(join(tmpdir(), "grill-arena-"));
-  serveur = await demarrer({ port: 0, dossier, jeton: JETON });
+  dir = await mkdtemp(join(tmpdir(), "grill-arena-"));
+  server = await start({ port: 0, dir, token: TOKEN });
 });
 
 afterEach(async () => {
-  await serveur.fermer();
-  await rm(dossier, { recursive: true, force: true });
+  await server.close();
+  await rm(dir, { recursive: true, force: true });
 });
 
-// --- Rôles joués par les tests ---------------------------------------------
+// --- Roles played by the tests ----------------------------------------------
 
-async function requete(methode, chemin, { corps, jeton } = {}) {
-  const entetes = { "content-type": "application/json" };
-  if (jeton) entetes.authorization = `Bearer ${jeton}`;
-  const reponse = await fetch(serveur.url + chemin, {
-    method: methode,
-    headers: entetes,
-    body: corps === undefined ? undefined : JSON.stringify(corps),
+async function request(method, path, { body, token } = {}) {
+  const headers = { "content-type": "application/json" };
+  if (token) headers.authorization = `Bearer ${token}`;
+  const response = await fetch(server.url + path, {
+    method,
+    headers,
+    body: body === undefined ? undefined : JSON.stringify(body),
   });
-  const texte = await reponse.text();
-  return { statut: reponse.status, corps: texte ? JSON.parse(texte) : undefined };
+  const text = await response.text();
+  return { status: response.status, body: text ? JSON.parse(text) : undefined };
 }
 
 const claude = {
-  demarrerSeance: (titre = "Séance de test") =>
-    requete("POST", "/api/seance", { corps: { titre }, jeton: JETON }),
-  publier: (etape) => requete("POST", "/api/etapes", { corps: etape, jeton: JETON }),
-  /** Publie l'Étape puis l'Animateur l'ouvre : la plupart des tests partent d'une Étape ouverte. */
-  publierOuverte: async (etape) => {
-    const publication = await requete("POST", "/api/etapes", { corps: etape, jeton: JETON });
-    assert.equal(publication.statut, 201);
-    assert.equal((await animateur.ouvrir(publication.corps.id)).statut, 200);
+  startSession: (title = "Test session") =>
+    request("POST", "/api/session", { body: { title }, token: TOKEN }),
+  publish: (step) => request("POST", "/api/steps", { body: step, token: TOKEN }),
+  /** Publishes the Step, then the Facilitator opens it: most tests start from an open Step. */
+  publishOpen: async (step) => {
+    const publication = await request("POST", "/api/steps", { body: step, token: TOKEN });
+    assert.equal(publication.status, 201);
+    assert.equal((await facilitator.open(publication.body.id)).status, 200);
     return publication;
   },
-  resultat: (id, { attendre = false } = {}) =>
-    requete("GET", `/api/etapes/${id}/resultat${attendre ? "?attendre=1" : ""}`, { jeton: JETON }),
-  terminer: () => requete("POST", "/api/seance/fin", { jeton: JETON }),
+  result: (id, { wait = false } = {}) =>
+    request("GET", `/api/steps/${id}/result${wait ? "?wait=1" : ""}`, { token: TOKEN }),
+  end: () => request("POST", "/api/session/end", { token: TOKEN }),
 };
 
-const animateur = {
-  /** Vue de l'Animateur : celle d'un Joueur, plus ce qui lui est réservé. */
-  etat: async (joueurId) =>
-    (await requete("GET", `/api/etat${joueurId ? `?joueur=${joueurId}` : ""}`, { jeton: JETON })).corps,
-  ouvrir: (etapeId) => requete("POST", `/api/etapes/${etapeId}/ouverture`, { jeton: JETON }),
-  clore: (etapeId, decisions = {}) =>
-    requete("POST", `/api/etapes/${etapeId}/cloture`, { corps: decisions, jeton: JETON }),
+const facilitator = {
+  /** The Facilitator's view: a Player's view, plus what is reserved to the Facilitator. */
+  state: async (playerId) =>
+    (await request("GET", `/api/state${playerId ? `?player=${playerId}` : ""}`, { token: TOKEN })).body,
+  open: (stepId) => request("POST", `/api/steps/${stepId}/opening`, { token: TOKEN }),
+  close: (stepId, decisions = {}) =>
+    request("POST", `/api/steps/${stepId}/closing`, { body: decisions, token: TOKEN }),
 };
 
-async function rejoindre(pseudo) {
-  const { statut, corps } = await requete("POST", "/api/joueurs", { corps: { pseudo } });
-  assert.equal(statut, 201, `rejoindre ${pseudo}`);
-  const id = corps.id;
+async function joinAs(nickname) {
+  const { status, body } = await request("POST", "/api/players", { body: { nickname } });
+  assert.equal(status, 201, `join ${nickname}`);
+  const id = body.id;
   return {
     id,
-    etat: async () => (await requete("GET", `/api/etat?joueur=${id}`)).corps,
-    repondre: (etapeId, questionId, reponse) =>
-      requete("PUT", `/api/etapes/${etapeId}/questions/${questionId}/reponse`, {
-        corps: { joueur: id, ...reponse },
+    state: async () => (await request("GET", `/api/state?player=${id}`)).body,
+    answer: (stepId, questionId, answer) =>
+      request("PUT", `/api/steps/${stepId}/questions/${questionId}/answer`, {
+        body: { player: id, ...answer },
       }),
   };
 }
 
-function etapeType(numero = 1) {
+function stepFixture(number = 1) {
   return {
-    numero,
-    tranchees: 0,
-    aVenir: 4,
+    number,
+    settled: 0,
+    remaining: 4,
     questions: [
       {
-        id: numero === 1 ? "q1" : `q1-${numero}`,
-        titre: "Où vit l'outil",
-        corps: "Un **dépôt dédié** ?",
-        propositions: [
-          { id: "A", libelle: "Dépôt dédié" },
-          { id: "B", libelle: "Dossier dans le monorepo" },
+        id: number === 1 ? "q1" : `q1-${number}`,
+        title: "Where does the tool live",
+        body: "A **dedicated repository**?",
+        options: [
+          { id: "A", label: "Dedicated repository" },
+          { id: "B", label: "Folder in the monorepo" },
         ],
-        recommandee: "A",
+        recommended: "A",
       },
     ],
   };
 }
 
-// --- Comportements ----------------------------------------------------------
+// --- Behaviors ----------------------------------------------------------------
 
-test("un Joueur voit l'Étape publiée par Claude, avec la Proposition recommandée", async () => {
-  await claude.demarrerSeance("Arène");
-  const publication = await claude.publierOuverte(etapeType());
-  assert.equal(publication.statut, 201);
+test("a Player sees the Step published by Claude, with the recommended option", async () => {
+  await claude.startSession("Arena");
+  const publication = await claude.publishOpen(stepFixture());
+  assert.equal(publication.status, 201);
 
-  const alice = await rejoindre("alice");
-  const etat = await alice.etat();
-  assert.equal(etat.seance.titre, "Arène");
-  assert.equal(etat.etape.id, publication.corps.id);
-  assert.equal(etat.etape.ouverte, true);
+  const alice = await joinAs("alice");
+  const state = await alice.state();
+  assert.equal(state.session.title, "Arena");
+  assert.equal(state.step.id, publication.body.id);
+  assert.equal(state.step.open, true);
   assert.deepEqual(
-    { numero: etat.etape.numero, tranchees: etat.etape.tranchees, aVenir: etat.etape.aVenir },
-    { numero: 1, tranchees: 0, aVenir: 4 },
+    { number: state.step.number, settled: state.step.settled, remaining: state.step.remaining },
+    { number: 1, settled: 0, remaining: 4 },
   );
-  const [q1] = etat.etape.questions;
-  assert.equal(q1.corps, "Un **dépôt dédié** ?");
-  assert.equal(q1.recommandee, "A");
-  assert.deepEqual(q1.propositions.map((p) => p.libelle), ["Dépôt dédié", "Dossier dans le monorepo"]);
+  const [q1] = state.step.questions;
+  assert.equal(q1.body, "A **dedicated repository**?");
+  assert.equal(q1.recommended, "A");
+  assert.deepEqual(q1.options.map((o) => o.label), ["Dedicated repository", "Folder in the monorepo"]);
 });
 
-test("une Étape publiée attend l'Ouverture : les Joueurs ne voient pas ses Questions et ne peuvent pas voter", async () => {
-  await claude.demarrerSeance();
-  const alice = await rejoindre("alice");
-  const { corps: etape } = await claude.publier(etapeType(1));
+test("a published Step waits for Opening: Players cannot see its Questions or vote", async () => {
+  await claude.startSession();
+  const alice = await joinAs("alice");
+  const { body: step } = await claude.publish(stepFixture(1));
 
-  const attente = (await alice.etat()).etape;
-  assert.equal(attente.etat, "en_attente");
-  assert.equal(attente.ouverte, false);
-  assert.equal(attente.numero, 1);
-  assert.deepEqual(attente.questions, []);
-  assert.equal(JSON.stringify(await alice.etat()).includes("Dépôt dédié"), false);
-  assert.equal((await alice.repondre(etape.id, "q1", { proposition: "A" })).statut, 409);
-  assert.equal((await claude.resultat(etape.id)).statut, 202);
-  assert.equal((await animateur.clore(etape.id)).statut, 409);
+  const pending = (await alice.state()).step;
+  assert.equal(pending.state, "pending");
+  assert.equal(pending.open, false);
+  assert.equal(pending.number, 1);
+  assert.deepEqual(pending.questions, []);
+  assert.equal(JSON.stringify(await alice.state()).includes("Dedicated repository"), false);
+  assert.equal((await alice.answer(step.id, "q1", { option: "A" })).status, 409);
+  assert.equal((await claude.result(step.id)).status, 202);
+  assert.equal((await facilitator.close(step.id)).status, 409);
 
-  assert.equal((await animateur.ouvrir(etape.id)).statut, 200);
-  const ouverte = (await alice.etat()).etape;
-  assert.equal(ouverte.etat, "ouverte");
-  assert.equal(ouverte.questions.length, 1);
-  assert.equal((await alice.repondre(etape.id, "q1", { proposition: "A" })).statut, 200);
+  assert.equal((await facilitator.open(step.id)).status, 200);
+  const open = (await alice.state()).step;
+  assert.equal(open.state, "open");
+  assert.equal(open.questions.length, 1);
+  assert.equal((await alice.answer(step.id, "q1", { option: "A" })).status, 200);
 });
 
-test("l'Ouverture est réservée à l'Animateur et refusée sur une Étape déjà ouverte ou close", async () => {
-  await claude.demarrerSeance();
-  const { corps: etape } = await claude.publier(etapeType());
-  assert.equal((await requete("POST", `/api/etapes/${etape.id}/ouverture`)).statut, 401);
-  assert.equal((await animateur.ouvrir(etape.id)).statut, 200);
-  assert.equal((await animateur.ouvrir(etape.id)).statut, 409);
-  await animateur.clore(etape.id);
-  assert.equal((await animateur.ouvrir(etape.id)).statut, 409);
+test("Opening is reserved to the Facilitator and refused on a Step already open or closed", async () => {
+  await claude.startSession();
+  const { body: step } = await claude.publish(stepFixture());
+  assert.equal((await request("POST", `/api/steps/${step.id}/opening`)).status, 401);
+  assert.equal((await facilitator.open(step.id)).status, 200);
+  assert.equal((await facilitator.open(step.id)).status, 409);
+  await facilitator.close(step.id);
+  assert.equal((await facilitator.open(step.id)).status, 409);
 });
 
-test("le long-poll de Claude attend la clôture, pas l'Ouverture", async () => {
-  await claude.demarrerSeance();
-  const { corps: etape } = await claude.publier(etapeType());
-  let repondu = false;
-  const attente = claude.resultat(etape.id, { attendre: true }).then((r) => ((repondu = true), r));
-  await animateur.ouvrir(etape.id);
+test("Claude's long-poll waits for closing, not for Opening", async () => {
+  await claude.startSession();
+  const { body: step } = await claude.publish(stepFixture());
+  let answered = false;
+  const waiting = claude.result(step.id, { wait: true }).then((r) => ((answered = true), r));
+  await facilitator.open(step.id);
   await new Promise((r) => setTimeout(r, 100));
-  assert.equal(repondu, false);
-  await animateur.clore(etape.id);
-  assert.equal((await attente).statut, 200);
+  assert.equal(answered, false);
+  await facilitator.close(step.id);
+  assert.equal((await waiting).status, 200);
 });
 
-test("on ne publie pas une Étape tant que la précédente n'est pas close, même en attente d'Ouverture", async () => {
-  await claude.demarrerSeance();
-  await claude.publier(etapeType(1));
-  assert.equal((await claude.publier(etapeType(2))).statut, 409);
+test("a Step cannot be published until the previous one is closed, even if it is still waiting for Opening", async () => {
+  await claude.startSession();
+  await claude.publish(stepFixture(1));
+  assert.equal((await claude.publish(stepFixture(2))).status, 409);
 });
 
-test("sans le jeton, impossible de démarrer une Séance, publier, clore ou terminer", async () => {
-  assert.equal((await requete("POST", "/api/seance", { corps: { titre: "x" } })).statut, 401);
-  await claude.demarrerSeance();
-  assert.equal((await requete("POST", "/api/etapes", { corps: etapeType() })).statut, 401);
-  const { corps } = await claude.publierOuverte(etapeType());
+test("without the token, a Session cannot be started, a Step published or closed, or the Session ended", async () => {
+  assert.equal((await request("POST", "/api/session", { body: { title: "x" } })).status, 401);
+  await claude.startSession();
+  assert.equal((await request("POST", "/api/steps", { body: stepFixture() })).status, 401);
+  const { body } = await claude.publishOpen(stepFixture());
   assert.equal(
-    (await requete("POST", `/api/etapes/${corps.id}/cloture`, { corps: {}, jeton: "faux" })).statut,
+    (await request("POST", `/api/steps/${body.id}/closing`, { body: {}, token: "wrong" })).status,
     401,
   );
-  assert.equal((await requete("GET", `/api/etapes/${corps.id}/resultat`)).statut, 401);
-  assert.equal((await requete("POST", "/api/seance/fin")).statut, 401);
+  assert.equal((await request("GET", `/api/steps/${body.id}/result`)).status, 401);
+  assert.equal((await request("POST", "/api/session/end")).status, 401);
 });
 
-test("avant la clôture, un Joueur ne voit que son propre Vote et le nombre de votants", async () => {
-  await claude.demarrerSeance();
-  const { corps: etape } = await claude.publierOuverte(etapeType());
-  const alice = await rejoindre("alice");
-  const bob = await rejoindre("bob");
-  await rejoindre("carol");
+test("before closing, a Player sees only their own Vote and the number of voters", async () => {
+  await claude.startSession();
+  const { body: step } = await claude.publishOpen(stepFixture());
+  const alice = await joinAs("alice");
+  const bob = await joinAs("bob");
+  await joinAs("carol");
 
-  assert.equal((await alice.repondre(etape.id, "q1", { proposition: "B", commentaire: "plutôt B" })).statut, 200);
-  await bob.repondre(etape.id, "q1", { commentaire: "je m'abstiens" });
+  assert.equal((await alice.answer(step.id, "q1", { option: "B", comment: "B for me" })).status, 200);
+  await bob.answer(step.id, "q1", { comment: "I abstain" });
 
-  const vueBob = await bob.etat();
-  const [q1] = vueBob.etape.questions;
-  assert.equal(q1.votants, 1);
-  assert.equal(vueBob.joueurs, 3);
-  assert.equal(q1.monVote, null);
-  assert.equal(q1.monCommentaire, "je m'abstiens");
-  assert.equal(JSON.stringify(vueBob).includes("plutôt B"), false);
-  assert.equal(q1.repartition, undefined);
+  const bobView = await bob.state();
+  const [q1] = bobView.step.questions;
+  assert.equal(q1.voters, 1);
+  assert.equal(bobView.players, 3);
+  assert.equal(q1.myVote, null);
+  assert.equal(q1.myComment, "I abstain");
+  assert.equal(JSON.stringify(bobView).includes("B for me"), false);
+  assert.equal(q1.distribution, undefined);
 
-  const [q1Alice] = (await alice.etat()).etape.questions;
-  assert.equal(q1Alice.monVote, "B");
-  assert.equal(q1Alice.monCommentaire, "plutôt B");
+  const [aliceQ1] = (await alice.state()).step.questions;
+  assert.equal(aliceQ1.myVote, "B");
+  assert.equal(aliceQ1.myComment, "B for me");
 });
 
-test("un Joueur peut changer son Vote, revenir à l'Abstention et effacer son Commentaire", async () => {
-  await claude.demarrerSeance();
-  const { corps: etape } = await claude.publierOuverte(etapeType());
-  const alice = await rejoindre("alice");
+test("a Player can change their Vote, go back to Abstention and erase their Comment", async () => {
+  await claude.startSession();
+  const { body: step } = await claude.publishOpen(stepFixture());
+  const alice = await joinAs("alice");
 
-  await alice.repondre(etape.id, "q1", { proposition: "B", commentaire: "B" });
-  await alice.repondre(etape.id, "q1", { proposition: "A" });
-  let [q1] = (await alice.etat()).etape.questions;
-  assert.deepEqual([q1.monVote, q1.monCommentaire, q1.votants], ["A", "B", 1]);
+  await alice.answer(step.id, "q1", { option: "B", comment: "B" });
+  await alice.answer(step.id, "q1", { option: "A" });
+  let [q1] = (await alice.state()).step.questions;
+  assert.deepEqual([q1.myVote, q1.myComment, q1.voters], ["A", "B", 1]);
 
-  await alice.repondre(etape.id, "q1", { proposition: null, commentaire: "" });
-  [q1] = (await alice.etat()).etape.questions;
-  assert.deepEqual([q1.monVote, q1.monCommentaire, q1.votants], [null, "", 0]);
+  await alice.answer(step.id, "q1", { option: null, comment: "" });
+  [q1] = (await alice.state()).step.questions;
+  assert.deepEqual([q1.myVote, q1.myComment, q1.voters], [null, "", 0]);
 });
 
-test("à la clôture, Claude reçoit la Proposition retenue, la répartition, les Commentaires et le Tableau des scores", async () => {
-  await claude.demarrerSeance();
-  const { corps: etape } = await claude.publierOuverte(etapeType());
-  const alice = await rejoindre("alice");
-  const bob = await rejoindre("bob");
-  const carol = await rejoindre("carol");
-  await rejoindre("dan"); // s'abstient sans rien dire
-  await alice.repondre(etape.id, "q1", { proposition: "B", commentaire: "le monorepo suffit" });
-  await bob.repondre(etape.id, "q1", { proposition: "B" });
-  await carol.repondre(etape.id, "q1", { proposition: "A" });
+test("at closing, Claude receives the selected option, the distribution, the Comments and the Scoreboard", async () => {
+  await claude.startSession();
+  const { body: step } = await claude.publishOpen(stepFixture());
+  const alice = await joinAs("alice");
+  const bob = await joinAs("bob");
+  const carol = await joinAs("carol");
+  await joinAs("dan"); // abstains without saying anything
+  await alice.answer(step.id, "q1", { option: "B", comment: "the monorepo is enough" });
+  await bob.answer(step.id, "q1", { option: "B" });
+  await carol.answer(step.id, "q1", { option: "A" });
 
-  assert.equal((await animateur.clore(etape.id)).statut, 200);
-  const { statut, corps: resultat } = await claude.resultat(etape.id);
-  assert.equal(statut, 200);
-  assert.deepEqual(resultat.questions, [
+  assert.equal((await facilitator.close(step.id)).status, 200);
+  const { status, body: result } = await claude.result(step.id);
+  assert.equal(status, 200);
+  assert.deepEqual(result.questions, [
     {
       id: "q1",
-      numero: 1,
-      statut: "retenue",
-      retenue: "B",
-      repartition: { A: 1, B: 2 },
+      number: 1,
+      status: "selected",
+      selected: "B",
+      distribution: { A: 1, B: 2 },
       abstentions: 1,
-      commentaires: [{ pseudo: "alice", texte: "le monorepo suffit" }],
+      comments: [{ nickname: "alice", text: "the monorepo is enough" }],
     },
   ]);
-  assert.deepEqual(resultat.tableau, [
-    { pseudo: "alice", points: 1, total: 1, gainEtape: 1 },
-    { pseudo: "bob", points: 1, total: 1, gainEtape: 1 },
-    { pseudo: "carol", points: 0, total: 0, gainEtape: 0 },
-    { pseudo: "dan", points: 0, total: 0, gainEtape: 0 },
+  assert.deepEqual(result.scoreboard, [
+    { nickname: "alice", points: 1, total: 1, stepGain: 1 },
+    { nickname: "bob", points: 1, total: 1, stepGain: 1 },
+    { nickname: "carol", points: 0, total: 0, stepGain: 0 },
+    { nickname: "dan", points: 0, total: 0, stepGain: 0 },
   ]);
 
-  const vueCarol = await carol.etat();
-  assert.equal(vueCarol.etape.ouverte, false);
-  assert.deepEqual(vueCarol.etape.questions[0].resultat, resultat.questions[0]);
-  assert.deepEqual((await animateur.etat()).tableau, resultat.tableau);
+  const carolView = await carol.state();
+  assert.equal(carolView.step.open, false);
+  assert.deepEqual(carolView.step.questions[0].result, result.questions[0]);
+  assert.deepEqual((await facilitator.state()).scoreboard, result.scoreboard);
 });
 
-test("tant que l'Étape est ouverte, le résultat sans attente indique qu'elle n'est pas close", async () => {
-  await claude.demarrerSeance();
-  const { corps: etape } = await claude.publierOuverte(etapeType());
-  const { statut, corps } = await claude.resultat(etape.id);
-  assert.equal(statut, 202);
-  assert.equal(corps.ouverte, true);
+test("while the Step is open, the result without waiting says it is not closed", async () => {
+  await claude.startSession();
+  const { body: step } = await claude.publishOpen(stepFixture());
+  const { status, body } = await claude.result(step.id);
+  assert.equal(status, 202);
+  assert.equal(body.open, true);
 });
 
-test("le long-poll de Claude reste ouvert jusqu'à la clôture, puis renvoie le résultat", async () => {
-  await claude.demarrerSeance();
-  const { corps: etape } = await claude.publierOuverte(etapeType());
-  const alice = await rejoindre("alice");
-  await alice.repondre(etape.id, "q1", { proposition: "A" });
+test("Claude's long-poll stays open until closing, then returns the result", async () => {
+  await claude.startSession();
+  const { body: step } = await claude.publishOpen(stepFixture());
+  const alice = await joinAs("alice");
+  await alice.answer(step.id, "q1", { option: "A" });
 
-  let repondu = false;
-  const attente = claude.resultat(etape.id, { attendre: true }).then((r) => {
-    repondu = true;
+  let answered = false;
+  const waiting = claude.result(step.id, { wait: true }).then((r) => {
+    answered = true;
     return r;
   });
   await new Promise((r) => setTimeout(r, 100));
-  assert.equal(repondu, false);
+  assert.equal(answered, false);
 
-  await animateur.clore(etape.id);
-  const { statut, corps } = await attente;
-  assert.equal(statut, 200);
-  assert.equal(corps.questions[0].retenue, "A");
+  await facilitator.close(step.id);
+  const { status, body } = await waiting;
+  assert.equal(status, 200);
+  assert.equal(body.questions[0].selected, "A");
 
-  // relancé après la clôture, il répond tout de suite
-  assert.equal((await claude.resultat(etape.id, { attendre: true })).statut, 200);
+  // called again after closing, it answers immediately
+  assert.equal((await claude.result(step.id, { wait: true })).status, 200);
 });
 
-function etapeTroisPropositions() {
-  const etape = etapeType();
-  etape.questions[0].propositions.push({ id: "C", libelle: "Plugin de skills" });
-  return etape;
+function threeOptionsStep() {
+  const step = stepFixture();
+  step.questions[0].options.push({ id: "C", label: "Skills plugin" });
+  return step;
 }
 
-test("un partage des Votes n'est pas tranché : la Question est renvoyée à l'oral, sans Point", async () => {
-  await claude.demarrerSeance();
-  const { corps: etape } = await claude.publierOuverte(etapeTroisPropositions());
-  const alice = await rejoindre("alice");
-  const bob = await rejoindre("bob");
-  await alice.repondre(etape.id, "q1", { proposition: "A", commentaire: "A d'abord" });
-  await bob.repondre(etape.id, "q1", { proposition: "C" });
+test("a split vote is not settled: the Question is sent back to be re-asked, with no Point", async () => {
+  await claude.startSession();
+  const { body: step } = await claude.publishOpen(threeOptionsStep());
+  const alice = await joinAs("alice");
+  const bob = await joinAs("bob");
+  await alice.answer(step.id, "q1", { option: "A", comment: "A first" });
+  await bob.answer(step.id, "q1", { option: "C" });
 
-  const cloture = await animateur.clore(etape.id);
-  assert.equal(cloture.statut, 200);
-  const [q1] = cloture.corps.questions;
-  assert.equal(q1.statut, "a_reposer");
-  assert.equal(q1.retenue, undefined);
-  assert.deepEqual(q1.repartition, { A: 1, B: 0, C: 1 });
-  assert.deepEqual(q1.commentaires, [{ pseudo: "alice", texte: "A d'abord" }]);
-  assert.deepEqual(cloture.corps.tableau.map((l) => [l.pseudo, l.total]), [["alice", 0], ["bob", 0]]);
+  const closing = await facilitator.close(step.id);
+  assert.equal(closing.status, 200);
+  const [q1] = closing.body.questions;
+  assert.equal(q1.status, "to_reask");
+  assert.equal(q1.split, true);
+  assert.equal(q1.selected, undefined);
+  assert.deepEqual(q1.distribution, { A: 1, B: 0, C: 1 });
+  assert.deepEqual(q1.comments, [{ nickname: "alice", text: "A first" }]);
+  assert.deepEqual(closing.body.scoreboard.map((r) => [r.nickname, r.total]), [["alice", 0], ["bob", 0]]);
 });
 
-test("le Récapitulatif signale un partage des Votes, distinct d'une Question que l'Animateur repose", async () => {
-  await claude.demarrerSeance("Arène");
-  const alice = await rejoindre("alice");
-  const bob = await rejoindre("bob");
-  const contenu = etapeTroisPropositions();
-  contenu.questions.push({ ...structuredClone(contenu.questions[0]), id: "q2", titre: "Hébergement" });
-  const { corps: etape } = await claude.publierOuverte(contenu);
-  await alice.repondre(etape.id, "q1", { proposition: "A" });
-  await bob.repondre(etape.id, "q1", { proposition: "C" });
-  await alice.repondre(etape.id, "q2", { proposition: "A" });
-  await animateur.clore(etape.id, { aReposer: ["q2"] });
+test("the Summary flags a split vote, distinct from a Question the Facilitator re-asks", async () => {
+  await claude.startSession("Arena");
+  const alice = await joinAs("alice");
+  const bob = await joinAs("bob");
+  const content = threeOptionsStep();
+  content.questions.push({ ...structuredClone(content.questions[0]), id: "q2", title: "Hosting" });
+  const { body: step } = await claude.publishOpen(content);
+  await alice.answer(step.id, "q1", { option: "A" });
+  await bob.answer(step.id, "q1", { option: "C" });
+  await alice.answer(step.id, "q2", { option: "A" });
+  await facilitator.close(step.id, { toReask: ["q2"] });
 
-  const { corps } = await claude.terminer();
-  const lignes = corps.recapitulatif.split("\n");
-  assert.ok(lignes.includes("- **Q1 · Où vit l'outil** : à reposer (partage des Votes)"), corps.recapitulatif);
-  assert.ok(lignes.includes("- **Q2 · Hébergement** : à reposer"), corps.recapitulatif);
+  const { body } = await claude.end();
+  const lines = body.summary.split("\n");
+  assert.ok(lines.includes("- **Q1 · Where does the tool live**: to re-ask (split vote)"), body.summary);
+  assert.ok(lines.includes("- **Q2 · Hosting**: to re-ask"), body.summary);
 });
 
-test("les Questions ont un Numéro continu sur toute la Séance, vu des Joueurs et de Claude", async () => {
-  await claude.demarrerSeance();
-  const alice = await rejoindre("alice");
-  const premiere = etapeType(1);
-  premiere.questions.push({ ...structuredClone(premiere.questions[0]), id: "q2", titre: "Stack" });
-  const { corps: e1 } = await claude.publierOuverte(premiere);
-  assert.deepEqual((await alice.etat()).etape.questions.map((q) => q.numero), [1, 2]);
-  const { corps: resultat1 } = await animateur.clore(e1.id);
-  assert.deepEqual(resultat1.questions.map((q) => q.numero), [1, 2]);
+test("Questions are numbered continuously across the Session, as seen by Players and by Claude", async () => {
+  await claude.startSession();
+  const alice = await joinAs("alice");
+  const first = stepFixture(1);
+  first.questions.push({ ...structuredClone(first.questions[0]), id: "q2", title: "Stack" });
+  const { body: s1 } = await claude.publishOpen(first);
+  assert.deepEqual((await alice.state()).step.questions.map((q) => q.number), [1, 2]);
+  const { body: result1 } = await facilitator.close(s1.id);
+  assert.deepEqual(result1.questions.map((q) => q.number), [1, 2]);
 
-  const secondeContenu = etapeType(2);
-  secondeContenu.questions[0].id = "q3";
-  const { corps: e2 } = await claude.publierOuverte(secondeContenu);
-  assert.deepEqual((await alice.etat()).etape.questions.map((q) => q.numero), [3]);
-  const { corps: resultat2 } = await animateur.clore(e2.id);
-  assert.deepEqual(resultat2.questions.map((q) => q.numero), [3]);
+  const secondContent = stepFixture(2);
+  secondContent.questions[0].id = "q3";
+  const { body: s2 } = await claude.publishOpen(secondContent);
+  assert.deepEqual((await alice.state()).step.questions.map((q) => q.number), [3]);
+  const { body: result2 } = await facilitator.close(s2.id);
+  assert.deepEqual(result2.questions.map((q) => q.number), [3]);
 });
 
-test("une Question marquée à reposer est renvoyée à Claude sans Proposition retenue ni Point", async () => {
-  await claude.demarrerSeance();
-  const { corps: etape } = await claude.publierOuverte(etapeType());
-  const alice = await rejoindre("alice");
-  await alice.repondre(etape.id, "q1", { proposition: "A", commentaire: "ni l'un ni l'autre" });
+test("a Question marked to re-ask is returned to Claude with no selected option and no Point", async () => {
+  await claude.startSession();
+  const { body: step } = await claude.publishOpen(stepFixture());
+  const alice = await joinAs("alice");
+  await alice.answer(step.id, "q1", { option: "A", comment: "neither one" });
 
-  const { corps } = await animateur.clore(etape.id, { aReposer: ["q1"] });
-  assert.equal(corps.questions[0].statut, "a_reposer");
-  assert.equal(corps.questions[0].retenue, undefined);
-  assert.equal(corps.tableau[0].total, 0);
+  const { body } = await facilitator.close(step.id, { toReask: ["q1"] });
+  assert.equal(body.questions[0].status, "to_reask");
+  assert.equal(body.questions[0].selected, undefined);
+  assert.equal(body.scoreboard[0].total, 0);
 });
 
-test("une Étape mal formée est refusée avec un message explicite", async () => {
-  await claude.demarrerSeance();
-  const casInvalides = {
-    "sans Question": (e) => { e.questions = []; },
-    "Question sans Proposition": (e) => { e.questions[0].propositions = []; },
-    "sans recommandée": (e) => { delete e.questions[0].recommandee; },
-    "recommandée absente des Propositions": (e) => { e.questions[0].recommandee = "Z"; },
-    "Propositions en double": (e) => { e.questions[0].propositions[1].id = "A"; },
-    "Questions en double": (e) => { e.questions.push(structuredClone(e.questions[0])); },
+test("a malformed Step is refused with an explicit message", async () => {
+  await claude.startSession();
+  const invalidCases = {
+    "no Question": (s) => { s.questions = []; },
+    "Question without options": (s) => { s.questions[0].options = []; },
+    "no recommended option": (s) => { delete s.questions[0].recommended; },
+    "recommended option missing from the options": (s) => { s.questions[0].recommended = "Z"; },
+    "duplicate options": (s) => { s.questions[0].options[1].id = "A"; },
+    "duplicate Questions": (s) => { s.questions.push(structuredClone(s.questions[0])); },
   };
-  for (const [cas, abimer] of Object.entries(casInvalides)) {
-    const etape = etapeType();
-    abimer(etape);
-    const { statut, corps } = await claude.publier(etape);
-    assert.equal(statut, 400, cas);
-    assert.match(corps.erreur, /\S/, cas);
+  for (const [name, damage] of Object.entries(invalidCases)) {
+    const step = stepFixture();
+    damage(step);
+    const { status, body } = await claude.publish(step);
+    assert.equal(status, 400, name);
+    assert.match(body.error, /\S/, name);
   }
 });
 
-test("on ne publie pas une Étape tant que la précédente est ouverte", async () => {
-  await claude.demarrerSeance();
-  const { corps: etape } = await claude.publierOuverte(etapeType(1));
-  assert.equal((await claude.publier(etapeType(2))).statut, 409);
-  await animateur.clore(etape.id);
-  assert.equal((await claude.publier(etapeType(2))).statut, 201);
+test("a Step cannot be published while the previous one is open", async () => {
+  await claude.startSession();
+  const { body: step } = await claude.publishOpen(stepFixture(1));
+  assert.equal((await claude.publish(stepFixture(2))).status, 409);
+  await facilitator.close(step.id);
+  assert.equal((await claude.publish(stepFixture(2))).status, 201);
 });
 
-test("un Vote sur une Étape close, ou pour une Proposition inconnue, est refusé", async () => {
-  await claude.demarrerSeance();
-  const { corps: etape } = await claude.publierOuverte(etapeType());
-  const alice = await rejoindre("alice");
-  assert.equal((await alice.repondre(etape.id, "q1", { proposition: "Z" })).statut, 400);
-  await animateur.clore(etape.id);
-  assert.equal((await alice.repondre(etape.id, "q1", { proposition: "A" })).statut, 409);
+test("a Vote on a closed Step, or for an unknown option, is refused", async () => {
+  await claude.startSession();
+  const { body: step } = await claude.publishOpen(stepFixture());
+  const alice = await joinAs("alice");
+  assert.equal((await alice.answer(step.id, "q1", { option: "Z" })).status, 400);
+  await facilitator.close(step.id);
+  assert.equal((await alice.answer(step.id, "q1", { option: "A" })).status, 409);
 });
 
-test("un pseudo déjà pris dans la Séance est refusé, sans tenir compte de la casse", async () => {
-  await claude.demarrerSeance();
-  await rejoindre("Alice");
-  const { statut } = await requete("POST", "/api/joueurs", { corps: { pseudo: "alice" } });
-  assert.equal(statut, 409);
-  assert.equal((await requete("POST", "/api/joueurs", { corps: { pseudo: "  " } })).statut, 400);
+test("a nickname already taken in the Session is refused, ignoring case", async () => {
+  await claude.startSession();
+  await joinAs("Alice");
+  const { status } = await request("POST", "/api/players", { body: { nickname: "alice" } });
+  assert.equal(status, 409);
+  assert.equal((await request("POST", "/api/players", { body: { nickname: "  " } })).status, 400);
 });
 
-test("un Joueur peut reprendre son pseudo sur demande explicite et retrouve ses Votes", async () => {
-  await claude.demarrerSeance();
-  const { corps: etape } = await claude.publierOuverte(etapeType());
-  const alice = await rejoindre("Alice");
-  await alice.repondre(etape.id, "q1", { proposition: "B", commentaire: "plutôt B" });
+test("a Player can resume their nickname on explicit request and gets their Votes back", async () => {
+  await claude.startSession();
+  const { body: step } = await claude.publishOpen(stepFixture());
+  const alice = await joinAs("Alice");
+  await alice.answer(step.id, "q1", { option: "B", comment: "B for me" });
 
-  const reprise = await requete("POST", "/api/joueurs", { corps: { pseudo: "alice", reprendre: true } });
-  assert.equal(reprise.statut, 200);
-  assert.equal(reprise.corps.id, alice.id);
-  assert.equal(reprise.corps.pseudo, "Alice");
+  const resumed = await request("POST", "/api/players", { body: { nickname: "alice", resume: true } });
+  assert.equal(resumed.status, 200);
+  assert.equal(resumed.body.id, alice.id);
+  assert.equal(resumed.body.nickname, "Alice");
 
-  const [q1] = (await alice.etat()).etape.questions;
-  assert.equal(q1.monVote, "B");
-  assert.equal(q1.monCommentaire, "plutôt B");
-  assert.equal((await requete("GET", "/api/etat")).corps.joueurs, 1);
+  const [q1] = (await alice.state()).step.questions;
+  assert.equal(q1.myVote, "B");
+  assert.equal(q1.myComment, "B for me");
+  assert.equal((await request("GET", "/api/state")).body.players, 1);
 });
 
-test("reprendre un pseudo inconnu crée le Joueur, un pseudo vide reste refusé", async () => {
-  await claude.demarrerSeance();
-  const nouveau = await requete("POST", "/api/joueurs", { corps: { pseudo: "bob", reprendre: true } });
-  assert.equal(nouveau.statut, 201);
-  assert.equal((await requete("POST", "/api/joueurs", { corps: { pseudo: " ", reprendre: true } })).statut, 400);
+test("resuming an unknown nickname creates the Player, a blank nickname is still refused", async () => {
+  await claude.startSession();
+  const created = await request("POST", "/api/players", { body: { nickname: "bob", resume: true } });
+  assert.equal(created.status, 201);
+  assert.equal((await request("POST", "/api/players", { body: { nickname: " ", resume: true } })).status, 400);
 });
 
-test("le Récapitulatif n'est visible de tous qu'une fois la Séance terminée", async () => {
-  await claude.demarrerSeance("Arène");
-  const { corps: etape } = await claude.publierOuverte(etapeType());
-  const alice = await rejoindre("alice");
-  await alice.repondre(etape.id, "q1", { proposition: "A" });
-  await animateur.clore(etape.id);
+test("the Summary is visible to everyone only once the Session has ended", async () => {
+  await claude.startSession("Arena");
+  const { body: step } = await claude.publishOpen(stepFixture());
+  const alice = await joinAs("alice");
+  await alice.answer(step.id, "q1", { option: "A" });
+  await facilitator.close(step.id);
 
-  assert.equal((await alice.etat()).seance.recapitulatif, undefined);
+  assert.equal((await alice.state()).session.summary, undefined);
 
-  const { corps: fin } = await claude.terminer();
-  assert.equal((await alice.etat()).seance.recapitulatif, fin.recapitulatif);
-  assert.equal((await requete("GET", "/api/etat")).corps.seance.recapitulatif, fin.recapitulatif);
+  const { body: end } = await claude.end();
+  assert.equal((await alice.state()).session.summary, end.summary);
+  assert.equal((await request("GET", "/api/state")).body.session.summary, end.summary);
 });
 
-test("sans Séance démarrée, rejoindre ou publier est refusé", async () => {
-  assert.equal((await requete("POST", "/api/joueurs", { corps: { pseudo: "alice" } })).statut, 409);
-  assert.equal((await claude.publier(etapeType())).statut, 409);
+test("without a started Session, joining or publishing is refused", async () => {
+  assert.equal((await request("POST", "/api/players", { body: { nickname: "alice" } })).status, 409);
+  assert.equal((await claude.publish(stepFixture())).status, 409);
 });
 
-test("un Joueur arrivé en cours de Séance démarre à 0 et vote dès l'Étape ouverte", async () => {
-  await claude.demarrerSeance();
-  const { corps: e1 } = await claude.publierOuverte(etapeType(1));
-  const alice = await rejoindre("alice");
-  await alice.repondre(e1.id, "q1", { proposition: "A" });
-  await animateur.clore(e1.id);
+test("a Player who arrives mid-Session starts at 0 and votes as soon as the Step is open", async () => {
+  await claude.startSession();
+  const { body: s1 } = await claude.publishOpen(stepFixture(1));
+  const alice = await joinAs("alice");
+  await alice.answer(s1.id, "q1", { option: "A" });
+  await facilitator.close(s1.id);
 
-  const { corps: e2 } = await claude.publierOuverte(etapeType(2));
-  const bob = await rejoindre("bob");
-  assert.equal((await animateur.etat()).tableau.find((l) => l.pseudo === "bob").total, 0);
-  assert.equal((await bob.repondre(e2.id, "q1-2", { proposition: "A" })).statut, 200);
-  const { corps } = await animateur.clore(e2.id);
-  assert.deepEqual(corps.tableau.map((l) => [l.pseudo, l.total]), [["alice", 1], ["bob", 1]]);
+  const { body: s2 } = await claude.publishOpen(stepFixture(2));
+  const bob = await joinAs("bob");
+  assert.equal((await facilitator.state()).scoreboard.find((r) => r.nickname === "bob").total, 0);
+  assert.equal((await bob.answer(s2.id, "q1-2", { option: "A" })).status, 200);
+  const { body } = await facilitator.close(s2.id);
+  assert.deepEqual(body.scoreboard.map((r) => [r.nickname, r.total]), [["alice", 1], ["bob", 1]]);
 });
 
-test("à la fin de la Séance, Claude reçoit le Récapitulatif et les Joueurs voient la Séance terminée", async () => {
-  await claude.demarrerSeance("Arène");
-  const alice = await rejoindre("alice");
-  const bob = await rejoindre("bob");
+test("at the end of the Session, Claude receives the Summary and Players see the Session ended", async () => {
+  await claude.startSession("Arena");
+  const alice = await joinAs("alice");
+  const bob = await joinAs("bob");
 
-  const { corps: e1 } = await claude.publierOuverte(etapeType(1));
-  await alice.repondre(e1.id, "q1", { proposition: "B" });
-  await animateur.clore(e1.id);
+  const { body: s1 } = await claude.publishOpen(stepFixture(1));
+  await alice.answer(s1.id, "q1", { option: "B" });
+  await facilitator.close(s1.id);
 
-  const e2Contenu = etapeType(2);
-  e2Contenu.questions[0].id = "q2";
-  e2Contenu.questions[0].titre = "Stack";
-  const { corps: e2 } = await claude.publierOuverte(e2Contenu);
-  await bob.repondre(e2.id, "q2", { proposition: "A" });
-  await animateur.clore(e2.id, { aReposer: ["q2"] });
+  const s2Content = stepFixture(2);
+  s2Content.questions[0].id = "q2";
+  s2Content.questions[0].title = "Stack";
+  const { body: s2 } = await claude.publishOpen(s2Content);
+  await bob.answer(s2.id, "q2", { option: "A" });
+  await facilitator.close(s2.id, { toReask: ["q2"] });
 
-  const { statut, corps } = await claude.terminer();
-  assert.equal(statut, 200);
-  const lignes = corps.recapitulatif.split("\n");
-  for (const attendue of [
-    "# Récapitulatif : Arène",
-    "## Étape 1",
-    "- **Q1 · Où vit l'outil** : Dossier dans le monorepo (non recommandée)",
-    "## Étape 2",
-    "- **Q2 · Stack** : à reposer",
-    "## Tableau des scores",
-    "1. alice : 1 (1 Point)",
-    "2. bob : 0 (0 Point)",
+  const { status, body } = await claude.end();
+  assert.equal(status, 200);
+  const lines = body.summary.split("\n");
+  for (const expected of [
+    "# Summary: Arena",
+    "## Step 1",
+    "- **Q1 · Where does the tool live**: Folder in the monorepo (not recommended)",
+    "## Step 2",
+    "- **Q2 · Stack**: to re-ask",
+    "## Scoreboard",
+    "1. alice: 1 (1 Point)",
+    "2. bob: 0 (0 Points)",
   ]) {
-    assert.ok(lignes.includes(attendue), `ligne manquante : ${attendue}\n${corps.recapitulatif}`);
+    assert.ok(lines.includes(expected), `missing line: ${expected}\n${body.summary}`);
   }
 
-  assert.equal((await alice.etat()).seance.terminee, true);
-  assert.equal((await claude.publier(etapeType(3))).statut, 409);
+  assert.equal((await alice.state()).session.ended, true);
+  assert.equal((await claude.publish(stepFixture(3))).status, 409);
 });
 
-test("sans Séance démarrée, l'état le dit au lieu d'échouer", async () => {
-  const { statut, corps } = await requete("GET", "/api/etat");
-  assert.equal(statut, 200);
-  assert.equal(corps.seance, null);
+test("without a started Session, the state says so instead of failing", async () => {
+  const { status, body } = await request("GET", "/api/state");
+  assert.equal(status, 200);
+  assert.equal(body.session, null);
 });
 
-test("après un redémarrage, la Séance reprend avec ses Joueurs, son Étape ouverte et ses scores", async () => {
-  await claude.demarrerSeance("Arène");
-  const alice = await rejoindre("alice");
-  const { corps: e1 } = await claude.publierOuverte(etapeType(1));
-  await alice.repondre(e1.id, "q1", { proposition: "B" });
-  await animateur.clore(e1.id);
-  const { corps: e2 } = await claude.publierOuverte(etapeType(2));
-  await alice.repondre(e2.id, "q1-2", { proposition: "A", commentaire: "gardé" });
+test("after a restart, the Session resumes with its Players, its open Step and its scores", async () => {
+  await claude.startSession("Arena");
+  const alice = await joinAs("alice");
+  const { body: s1 } = await claude.publishOpen(stepFixture(1));
+  await alice.answer(s1.id, "q1", { option: "B" });
+  await facilitator.close(s1.id);
+  const { body: s2 } = await claude.publishOpen(stepFixture(2));
+  await alice.answer(s2.id, "q1-2", { option: "A", comment: "kept" });
 
-  await serveur.fermer();
-  serveur = await demarrer({ port: 0, dossier, jeton: JETON });
+  await server.close();
+  server = await start({ port: 0, dir, token: TOKEN });
 
-  const etat = await alice.etat();
-  assert.equal(etat.seance.titre, "Arène");
-  assert.equal(etat.etape.id, e2.id);
-  assert.equal(etat.etape.questions[0].monCommentaire, "gardé");
-  assert.deepEqual((await animateur.etat()).tableau.map((l) => [l.pseudo, l.total]), [["alice", 1]]);
+  const state = await alice.state();
+  assert.equal(state.session.title, "Arena");
+  assert.equal(state.step.id, s2.id);
+  assert.equal(state.step.questions[0].myComment, "kept");
+  assert.deepEqual((await facilitator.state()).scoreboard.map((r) => [r.nickname, r.total]), [["alice", 1]]);
 
-  const { corps } = await animateur.clore(e2.id);
-  assert.deepEqual(corps.tableau.map((l) => [l.pseudo, l.total]), [["alice", 2]]);
+  const { body } = await facilitator.close(s2.id);
+  assert.deepEqual(body.scoreboard.map((r) => [r.nickname, r.total]), [["alice", 2]]);
 });
 
-test("démarrer une nouvelle Séance archive la précédente sans l'écraser", async () => {
-  await claude.demarrerSeance("Première");
-  await rejoindre("alice");
-  await claude.demarrerSeance("Seconde");
-  assert.equal((await requete("GET", "/api/etat")).corps.seance.titre, "Seconde");
-  assert.equal((await requete("POST", "/api/joueurs", { corps: { pseudo: "alice" } })).statut, 201);
+test("starting a new Session archives the previous one without overwriting it", async () => {
+  await claude.startSession("First");
+  await joinAs("alice");
+  await claude.startSession("Second");
+  assert.equal((await request("GET", "/api/state")).body.session.title, "Second");
+  assert.equal((await request("POST", "/api/players", { body: { nickname: "alice" } })).status, 201);
 
-  const { readdir } = await import("node:fs/promises");
-  assert.equal((await readdir(dossier)).filter((f) => f.endsWith(".json")).length, 2);
+  assert.equal((await readdir(dir)).filter((f) => f.endsWith(".json")).length, 2);
 
-  await serveur.fermer();
-  serveur = await demarrer({ port: 0, dossier, jeton: JETON });
-  assert.equal((await requete("GET", "/api/etat")).corps.seance.titre, "Seconde");
+  await server.close();
+  server = await start({ port: 0, dir, token: TOKEN });
+  assert.equal((await request("GET", "/api/state")).body.session.title, "Second");
 });
 
-test("le prompt initial de la Séance est visible de tous et l'Animateur peut le modifier", async () => {
-  await requete("POST", "/api/seance", { corps: { titre: "Arène", prompt: "Grill **le** dépôt" }, jeton: JETON });
-  const alice = await rejoindre("alice");
-  assert.equal((await alice.etat()).seance.prompt, "Grill **le** dépôt");
+test("the Session's initial prompt is visible to everyone and the Facilitator can edit it", async () => {
+  await request("POST", "/api/session", { body: { title: "Arena", prompt: "Grill **the** repository" }, token: TOKEN });
+  const alice = await joinAs("alice");
+  assert.equal((await alice.state()).session.prompt, "Grill **the** repository");
 
-  assert.equal((await requete("PUT", "/api/seance/prompt", { corps: { prompt: "x" } })).statut, 401);
-  const modification = await requete("PUT", "/api/seance/prompt", { corps: { prompt: "Nouveau cadrage" }, jeton: JETON });
-  assert.equal(modification.statut, 200);
-  assert.equal((await alice.etat()).seance.prompt, "Nouveau cadrage");
+  assert.equal((await request("PUT", "/api/session/prompt", { body: { prompt: "x" } })).status, 401);
+  const edit = await request("PUT", "/api/session/prompt", { body: { prompt: "New framing" }, token: TOKEN });
+  assert.equal(edit.status, 200);
+  assert.equal((await alice.state()).session.prompt, "New framing");
 });
 
-test("le prompt initial se verrouille à l'Ouverture de l'Étape 1 et disparaît de la vue des Joueurs", async () => {
-  await requete("POST", "/api/seance", { corps: { titre: "Arène", prompt: "Cadrage initial" }, jeton: JETON });
-  const alice = await rejoindre("alice");
-  const { corps: etape } = await claude.publier(etapeType());
+test("the initial prompt locks at the Opening of Step 1 and disappears from the Players' view", async () => {
+  await request("POST", "/api/session", { body: { title: "Arena", prompt: "Initial framing" }, token: TOKEN });
+  const alice = await joinAs("alice");
+  const { body: step } = await claude.publish(stepFixture());
 
-  // publiée mais pas ouverte : toujours visible et modifiable
-  assert.equal((await alice.etat()).seance.prompt, "Cadrage initial");
-  assert.equal((await requete("PUT", "/api/seance/prompt", { corps: { prompt: "Cadrage v2" }, jeton: JETON })).statut, 200);
-  assert.equal((await alice.etat()).seance.prompt, "Cadrage v2");
+  // published but not open: still visible and editable
+  assert.equal((await alice.state()).session.prompt, "Initial framing");
+  assert.equal((await request("PUT", "/api/session/prompt", { body: { prompt: "Framing v2" }, token: TOKEN })).status, 200);
+  assert.equal((await alice.state()).session.prompt, "Framing v2");
 
-  await animateur.ouvrir(etape.id);
-  assert.equal((await alice.etat()).seance.prompt, undefined);
-  const vueAnimateur = await requete("GET", `/api/etat?joueur=${alice.id}`, { jeton: JETON });
-  assert.equal(vueAnimateur.corps.seance.prompt, "Cadrage v2");
-  assert.equal(vueAnimateur.corps.seance.promptVerrouille, true);
-  const refus = await requete("PUT", "/api/seance/prompt", { corps: { prompt: "Trop tard" }, jeton: JETON });
-  assert.equal(refus.statut, 409);
-  assert.equal((await requete("GET", `/api/etat?joueur=${alice.id}`, { jeton: JETON })).corps.seance.prompt, "Cadrage v2");
+  await facilitator.open(step.id);
+  assert.equal((await alice.state()).session.prompt, undefined);
+  const facilitatorView = await request("GET", `/api/state?player=${alice.id}`, { token: TOKEN });
+  assert.equal(facilitatorView.body.session.prompt, "Framing v2");
+  assert.equal(facilitatorView.body.session.promptLocked, true);
+  const refusal = await request("PUT", "/api/session/prompt", { body: { prompt: "Too late" }, token: TOKEN });
+  assert.equal(refusal.status, 409);
+  assert.equal((await request("GET", `/api/state?player=${alice.id}`, { token: TOKEN })).body.session.prompt, "Framing v2");
 });
 
-test("le Tableau et les statistiques sont cachés des Joueurs pendant la Séance, visibles de l'Animateur", async () => {
-  await claude.demarrerSeance();
-  const alice = await rejoindre("alice");
-  const bob = await rejoindre("bob");
-  const contenu = etapeType(1);
-  contenu.questions.push({ ...structuredClone(contenu.questions[0]), id: "q2", titre: "Stack" });
-  const { corps: etape } = await claude.publierOuverte(contenu);
-  await alice.repondre(etape.id, "q1", { proposition: "A", commentaire: "d'accord" });
-  await alice.repondre(etape.id, "q2", { proposition: "A" });
-  await bob.repondre(etape.id, "q1", { proposition: "A" });
-  await animateur.clore(etape.id);
+test("the Scoreboard and statistics are hidden from Players during the Session, visible to the Facilitator", async () => {
+  await claude.startSession();
+  const alice = await joinAs("alice");
+  const bob = await joinAs("bob");
+  const content = stepFixture(1);
+  content.questions.push({ ...structuredClone(content.questions[0]), id: "q2", title: "Stack" });
+  const { body: step } = await claude.publishOpen(content);
+  await alice.answer(step.id, "q1", { option: "A", comment: "agreed" });
+  await alice.answer(step.id, "q2", { option: "A" });
+  await bob.answer(step.id, "q1", { option: "A" });
+  await facilitator.close(step.id);
 
-  const vueAlice = await alice.etat();
-  assert.equal(vueAlice.tableau, undefined);
-  assert.equal(vueAlice.statistiques, undefined);
-  assert.equal(vueAlice.etape.questions[0].resultat.retenue, "A", "les résultats de l'Étape restent publics");
+  const aliceView = await alice.state();
+  assert.equal(aliceView.scoreboard, undefined);
+  assert.equal(aliceView.statistics, undefined);
+  assert.equal(aliceView.step.questions[0].result.selected, "A", "the Step's results stay public");
 
-  const vueAnimateur = await animateur.etat(alice.id);
-  assert.deepEqual(vueAnimateur.tableau.map((l) => [l.pseudo, l.total]), [["alice", 2], ["bob", 1]]);
-  assert.deepEqual(vueAnimateur.statistiques, [
-    { pseudo: "alice", votes: 2, commentaires: 1, abstentions: 0 },
-    { pseudo: "bob", votes: 1, commentaires: 0, abstentions: 1 },
+  const facilitatorView = await facilitator.state(alice.id);
+  assert.deepEqual(facilitatorView.scoreboard.map((r) => [r.nickname, r.total]), [["alice", 2], ["bob", 1]]);
+  assert.deepEqual(facilitatorView.statistics, [
+    { nickname: "alice", votes: 2, comments: 1, abstentions: 0 },
+    { nickname: "bob", votes: 1, comments: 0, abstentions: 1 },
   ]);
 });
 
-test("à la fin de la Séance, le Tableau et les statistiques sont publiés à tous et renvoyés à Claude", async () => {
-  await claude.demarrerSeance();
-  const alice = await rejoindre("alice");
-  const { corps: etape } = await claude.publierOuverte(etapeType());
-  await alice.repondre(etape.id, "q1", { proposition: "A" });
-  await animateur.clore(etape.id);
+test("at the end of the Session, the Scoreboard and statistics are published to everyone and returned to Claude", async () => {
+  await claude.startSession();
+  const alice = await joinAs("alice");
+  const { body: step } = await claude.publishOpen(stepFixture());
+  await alice.answer(step.id, "q1", { option: "A" });
+  await facilitator.close(step.id);
 
-  const { corps: fin } = await claude.terminer();
-  assert.deepEqual(fin.statistiques, [{ pseudo: "alice", votes: 1, commentaires: 0, abstentions: 0 }]);
-  const vue = await alice.etat();
-  assert.deepEqual(vue.statistiques, fin.statistiques);
-  assert.deepEqual(vue.tableau.map((l) => [l.pseudo, l.total]), [["alice", 1]]);
+  const { body: end } = await claude.end();
+  assert.deepEqual(end.statistics, [{ nickname: "alice", votes: 1, comments: 0, abstentions: 0 }]);
+  const view = await alice.state();
+  assert.deepEqual(view.statistics, end.statistics);
+  assert.deepEqual(view.scoreboard.map((r) => [r.nickname, r.total]), [["alice", 1]]);
 });
 
-test("l'Animateur peut publier les statistiques avant la fin de la Séance", async () => {
-  await claude.demarrerSeance();
-  const alice = await rejoindre("alice");
-  const { corps: etape } = await claude.publierOuverte(etapeType());
-  await alice.repondre(etape.id, "q1", { proposition: "A" });
-  await animateur.clore(etape.id);
-  assert.equal((await alice.etat()).statistiques, undefined);
+test("the Facilitator can publish the statistics before the end of the Session", async () => {
+  await claude.startSession();
+  const alice = await joinAs("alice");
+  const { body: step } = await claude.publishOpen(stepFixture());
+  await alice.answer(step.id, "q1", { option: "A" });
+  await facilitator.close(step.id);
+  assert.equal((await alice.state()).statistics, undefined);
 
-  assert.equal((await requete("POST", "/api/seance/statistiques")).statut, 401);
-  assert.equal((await requete("POST", "/api/seance/statistiques", { jeton: JETON })).statut, 200);
-  const vue = await alice.etat();
-  assert.deepEqual(vue.statistiques, [{ pseudo: "alice", votes: 1, commentaires: 0, abstentions: 0 }]);
-  assert.deepEqual(vue.tableau.map((l) => [l.pseudo, l.total]), [["alice", 1]]);
+  assert.equal((await request("POST", "/api/session/statistics")).status, 401);
+  assert.equal((await request("POST", "/api/session/statistics", { token: TOKEN })).status, 200);
+  const view = await alice.state();
+  assert.deepEqual(view.statistics, [{ nickname: "alice", votes: 1, comments: 0, abstentions: 0 }]);
+  assert.deepEqual(view.scoreboard.map((r) => [r.nickname, r.total]), [["alice", 1]]);
 });
 
-test("la répartition en direct est masquée par défaut, même quand tout le monde a voté", async () => {
-  await claude.demarrerSeance();
-  const alice = await rejoindre("alice");
-  const { corps: etape } = await claude.publierOuverte(etapeType());
-  await alice.repondre(etape.id, "q1", { proposition: "A" });
-  assert.equal((await alice.etat()).etape.questions[0].repartition, undefined);
+test("the live distribution is hidden by default, even when everyone has voted", async () => {
+  await claude.startSession();
+  const alice = await joinAs("alice");
+  const { body: step } = await claude.publishOpen(stepFixture());
+  await alice.answer(step.id, "q1", { option: "A" });
+  assert.equal((await alice.state()).step.questions[0].distribution, undefined);
 });
 
-test("l'Animateur peut afficher la répartition en direct avant l'Ouverture de l'Étape 1 ; elle n'apparaît qu'à partir de la moitié des votants", async () => {
-  await claude.demarrerSeance();
-  const [alice, bob] = [await rejoindre("alice"), await rejoindre("bob")];
-  await rejoindre("carol");
-  await rejoindre("dan");
-  const regler = (corps, jeton = JETON) => requete("PUT", "/api/seance/repartition-en-direct", { corps, jeton });
-  assert.equal((await regler({ actif: true }, null)).statut, 401);
-  assert.equal((await regler({ actif: true })).statut, 200);
+test("the Facilitator can show the live distribution before Step 1 opens; it appears only from half the voters", async () => {
+  await claude.startSession();
+  const [alice, bob] = [await joinAs("alice"), await joinAs("bob")];
+  await joinAs("carol");
+  await joinAs("dan");
+  const setLive = (body, token = TOKEN) => request("PUT", "/api/session/live-distribution", { body, token });
+  assert.equal((await setLive({ enabled: true }, null)).status, 401);
+  assert.equal((await setLive({ enabled: true })).status, 200);
 
-  const { corps: etape } = await claude.publier(etapeType());
-  assert.equal((await regler({ actif: true })).statut, 200, "réglable tant que l'Étape 1 n'est pas ouverte");
-  await animateur.ouvrir(etape.id);
-  assert.equal((await regler({ actif: false })).statut, 409);
+  const { body: step } = await claude.publish(stepFixture());
+  assert.equal((await setLive({ enabled: true })).status, 200, "adjustable until Step 1 is open");
+  await facilitator.open(step.id);
+  assert.equal((await setLive({ enabled: false })).status, 409);
 
-  await alice.repondre(etape.id, "q1", { proposition: "A" });
-  assert.equal((await bob.etat()).etape.questions[0].repartition, undefined, "1 votant sur 4");
-  await bob.repondre(etape.id, "q1", { proposition: "B" });
-  assert.deepEqual((await bob.etat()).etape.questions[0].repartition, { A: 1, B: 1 }, "2 votants sur 4");
-  assert.equal((await animateur.etat()).seance.repartitionEnDirect, true);
+  await alice.answer(step.id, "q1", { option: "A" });
+  assert.equal((await bob.state()).step.questions[0].distribution, undefined, "1 voter out of 4");
+  await bob.answer(step.id, "q1", { option: "B" });
+  assert.deepEqual((await bob.state()).step.questions[0].distribution, { A: 1, B: 1 }, "2 voters out of 4");
+  assert.equal((await facilitator.state()).session.liveDistribution, true);
 });
 
-// --- Co-animateur ------------------------------------------------------------
+// --- Co-facilitator ----------------------------------------------------------
 
-const designer = (joueurId, { jeton = JETON, methode = "PUT" } = {}) =>
-  requete(methode, `/api/seance/co-animateurs/${joueurId}`, { jeton });
+const appoint = (playerId, { token = TOKEN, method = "PUT" } = {}) =>
+  request(method, `/api/session/co-facilitators/${playerId}`, { token });
 
-test("seul l'Animateur désigne et révoque les Co-animateurs, parmi les Joueurs de la Séance", async () => {
-  await claude.demarrerSeance();
-  const alice = await rejoindre("alice");
-  const bob = await rejoindre("bob");
+test("only the Facilitator appoints and revokes Co-facilitators, among the Session's Players", async () => {
+  await claude.startSession();
+  const alice = await joinAs("alice");
+  const bob = await joinAs("bob");
 
-  assert.equal((await designer(alice.id, { jeton: null })).statut, 401);
-  assert.equal((await designer("inconnu")).statut, 404);
-  assert.equal((await designer(alice.id)).statut, 200);
-  assert.equal((await alice.etat()).coAnimateur, true);
-  assert.equal((await bob.etat()).coAnimateur, false);
-  const liste = (await animateur.etat(bob.id)).participants;
-  assert.deepEqual(liste.map((p) => [p.pseudo, p.coAnimateur]), [["alice", true], ["bob", false]]);
+  assert.equal((await appoint(alice.id, { token: null })).status, 401);
+  assert.equal((await appoint("unknown")).status, 404);
+  assert.equal((await appoint(alice.id)).status, 200);
+  assert.equal((await alice.state()).coFacilitator, true);
+  assert.equal((await bob.state()).coFacilitator, false);
+  const list = (await facilitator.state(bob.id)).participants;
+  assert.deepEqual(list.map((p) => [p.nickname, p.coFacilitator]), [["alice", true], ["bob", false]]);
 
-  // un Co-animateur ne désigne personne
-  const parAlice = await requete("PUT", `/api/seance/co-animateurs/${bob.id}`, { corps: { joueur: alice.id } });
-  assert.equal(parAlice.statut, 403);
+  // a Co-facilitator appoints nobody
+  const byAlice = await request("PUT", `/api/session/co-facilitators/${bob.id}`, { body: { player: alice.id } });
+  assert.equal(byAlice.status, 403);
 
-  assert.equal((await designer(alice.id, { methode: "DELETE" })).statut, 200);
-  assert.equal((await alice.etat()).coAnimateur, false);
+  assert.equal((await appoint(alice.id, { method: "DELETE" })).status, 200);
+  assert.equal((await alice.state()).coFacilitator, false);
 });
 
-test("un Co-animateur ouvre et clôt les Étapes, un Joueur ordinaire non", async () => {
-  await claude.demarrerSeance();
-  const alice = await rejoindre("alice");
-  const bob = await rejoindre("bob");
-  await designer(bob.id);
-  const { corps: etape } = await claude.publier(etapeType());
+test("a Co-facilitator opens and closes Steps, an ordinary Player cannot", async () => {
+  await claude.startSession();
+  const alice = await joinAs("alice");
+  const bob = await joinAs("bob");
+  await appoint(bob.id);
+  const { body: step } = await claude.publish(stepFixture());
 
-  const ouvrirPar = (joueur) => requete("POST", `/api/etapes/${etape.id}/ouverture`, { corps: { joueur: joueur.id } });
-  const clorePar = (joueur) => requete("POST", `/api/etapes/${etape.id}/cloture`, { corps: { joueur: joueur.id } });
-  assert.equal((await ouvrirPar(alice)).statut, 403);
-  assert.equal((await ouvrirPar(bob)).statut, 200);
-  await alice.repondre(etape.id, "q1", { proposition: "A" });
-  assert.equal((await clorePar(alice)).statut, 403);
-  assert.equal((await clorePar(bob)).statut, 200);
-  // l'Animateur arrivé juste après : refus sans effet
-  assert.equal((await animateur.clore(etape.id)).statut, 409);
+  const openBy = (player) => request("POST", `/api/steps/${step.id}/opening`, { body: { player: player.id } });
+  const closeBy = (player) => request("POST", `/api/steps/${step.id}/closing`, { body: { player: player.id } });
+  assert.equal((await openBy(alice)).status, 403);
+  assert.equal((await openBy(bob)).status, 200);
+  await alice.answer(step.id, "q1", { option: "A" });
+  assert.equal((await closeBy(alice)).status, 403);
+  assert.equal((await closeBy(bob)).status, 200);
+  // the Facilitator arriving right after: refused, no effect
+  assert.equal((await facilitator.close(step.id)).status, 409);
 
-  // révoqué, il perd ses droits
-  await designer(bob.id, { methode: "DELETE" });
-  const { corps: suivante } = await claude.publier(etapeType(2));
+  // once revoked, they lose their rights
+  await appoint(bob.id, { method: "DELETE" });
+  const { body: next } = await claude.publish(stepFixture(2));
   assert.equal(
-    (await requete("POST", `/api/etapes/${suivante.id}/ouverture`, { corps: { joueur: bob.id } })).statut,
+    (await request("POST", `/api/steps/${next.id}/opening`, { body: { player: bob.id } })).status,
     403,
   );
 });
 
-test("un Co-animateur voit le Tableau et les statistiques, mais ne règle ni le prompt, ni la répartition, ni la publication", async () => {
-  await claude.demarrerSeance();
-  const alice = await rejoindre("alice");
-  const bob = await rejoindre("bob");
-  await designer(bob.id);
-  const { corps: etape } = await claude.publierOuverte(etapeType());
-  await alice.repondre(etape.id, "q1", { proposition: "A" });
-  await animateur.clore(etape.id);
+test("a Co-facilitator sees the Scoreboard and statistics, but cannot set the prompt, the live distribution or publication", async () => {
+  await claude.startSession();
+  const alice = await joinAs("alice");
+  const bob = await joinAs("bob");
+  await appoint(bob.id);
+  const { body: step } = await claude.publishOpen(stepFixture());
+  await alice.answer(step.id, "q1", { option: "A" });
+  await facilitator.close(step.id);
 
-  assert.equal((await alice.etat()).tableau, undefined);
-  const vueBob = await bob.etat();
-  assert.deepEqual(vueBob.tableau.map((l) => [l.pseudo, l.total]), [["alice", 1], ["bob", 0]]);
-  assert.equal(vueBob.statistiques.length, 2);
-  assert.equal(vueBob.participants, undefined, "la liste de désignation reste réservée à l'Animateur");
+  assert.equal((await alice.state()).scoreboard, undefined);
+  const bobView = await bob.state();
+  assert.deepEqual(bobView.scoreboard.map((r) => [r.nickname, r.total]), [["alice", 1], ["bob", 0]]);
+  assert.equal(bobView.statistics.length, 2);
+  assert.equal(bobView.participants, undefined, "the appointment list stays reserved to the Facilitator");
 
-  const parBob = (methode, chemin, corps = {}) => requete(methode, chemin, { corps: { ...corps, joueur: bob.id } });
-  assert.equal((await parBob("PUT", "/api/seance/prompt", { prompt: "x" })).statut, 403);
-  assert.equal((await parBob("PUT", "/api/seance/repartition-en-direct", { actif: true })).statut, 403);
-  assert.equal((await parBob("POST", "/api/seance/statistiques")).statut, 403);
-  assert.equal((await alice.etat()).statistiques, undefined);
+  const byBob = (method, path, body = {}) => request(method, path, { body: { ...body, player: bob.id } });
+  assert.equal((await byBob("PUT", "/api/session/prompt", { prompt: "x" })).status, 403);
+  assert.equal((await byBob("PUT", "/api/session/live-distribution", { enabled: true })).status, 403);
+  assert.equal((await byBob("POST", "/api/session/statistics")).status, 403);
+  assert.equal((await alice.state()).statistics, undefined);
 });
 
-test("les Co-animateurs restent désignés après un redémarrage du serveur", async () => {
-  await claude.demarrerSeance();
-  const alice = await rejoindre("alice");
-  await designer(alice.id);
-  await claude.publier(etapeType());
+test("Co-facilitators stay appointed after a server restart", async () => {
+  await claude.startSession();
+  const alice = await joinAs("alice");
+  await appoint(alice.id);
+  await claude.publish(stepFixture());
 
-  await serveur.fermer();
-  serveur = await demarrer({ port: 0, dossier, jeton: JETON });
-  assert.equal((await alice.etat()).coAnimateur, true);
+  await server.close();
+  server = await start({ port: 0, dir, token: TOKEN });
+  assert.equal((await alice.state()).coFacilitator, true);
 });
 
-test("un Joueur retrouve les résultats de toutes les Étapes closes, la plus récente d'abord, avec son Vote", async () => {
-  await claude.demarrerSeance();
-  const alice = await rejoindre("alice");
-  assert.deepEqual((await alice.etat()).resultats, []);
+test("a Player finds the results of all closed Steps, most recent first, with their Vote", async () => {
+  await claude.startSession();
+  const alice = await joinAs("alice");
+  assert.deepEqual((await alice.state()).results, []);
 
-  const e1 = await claude.publierOuverte(etapeType(1));
-  await alice.repondre(e1.corps.id, "q1", { proposition: "B" });
-  await animateur.clore(e1.corps.id);
-  const contenu2 = etapeType(2);
-  contenu2.questions[0].id = "q2";
-  contenu2.questions[0].titre = "Stack";
-  const e2 = await claude.publierOuverte(contenu2);
-  assert.deepEqual((await alice.etat()).resultats.map((r) => r.numero), [1], "une Étape ouverte n'a pas de résultats");
+  const s1 = await claude.publishOpen(stepFixture(1));
+  await alice.answer(s1.body.id, "q1", { option: "B" });
+  await facilitator.close(s1.body.id);
+  const content2 = stepFixture(2);
+  content2.questions[0].id = "q2";
+  content2.questions[0].title = "Stack";
+  const s2 = await claude.publishOpen(content2);
+  assert.deepEqual((await alice.state()).results.map((r) => r.number), [1], "an open Step has no results");
 
-  await alice.repondre(e2.corps.id, "q2", { proposition: "A" });
-  await animateur.clore(e2.corps.id);
-  const { resultats, etapePrecedente } = await alice.etat();
-  assert.equal(etapePrecedente, undefined);
-  assert.deepEqual(resultats.map((r) => r.numero), [2, 1]);
-  const [q1] = resultats[1].questions;
-  assert.deepEqual([q1.numero, q1.titre, q1.monVote, q1.resultat.retenue], [1, "Où vit l'outil", "B", "B"]);
-  assert.equal(resultats[0].questions[0].resultat.retenue, "A");
+  await alice.answer(s2.body.id, "q2", { option: "A" });
+  await facilitator.close(s2.body.id);
+  const { results } = await alice.state();
+  assert.deepEqual(results.map((r) => r.number), [2, 1]);
+  const [q1] = results[1].questions;
+  assert.deepEqual([q1.number, q1.title, q1.myVote, q1.result.selected], [1, "Where does the tool live", "B", "B"]);
+  assert.equal(results[0].questions[0].result.selected, "A");
 });
 
-// --- Question reprise et repose unique -------------------------------------
+// --- Re-asked Question and single re-ask -------------------------------------
 
-/** Joue l'Étape 1 jusqu'à une égalité sur q1, close : q1 est alors à reposer. */
-async function egaliteSurQ1() {
-  await claude.demarrerSeance();
-  const alice = await rejoindre("alice");
-  const bob = await rejoindre("bob");
-  const { corps: etape } = await claude.publierOuverte(etapeTroisPropositions());
-  await alice.repondre(etape.id, "q1", { proposition: "A" });
-  await bob.repondre(etape.id, "q1", { proposition: "C" });
-  assert.equal((await animateur.clore(etape.id)).corps.questions[0].statut, "a_reposer");
+/** Plays Step 1 up to a split vote on q1, closed: q1 is then to re-ask. */
+async function splitVoteOnQ1() {
+  await claude.startSession();
+  const alice = await joinAs("alice");
+  const bob = await joinAs("bob");
+  const { body: step } = await claude.publishOpen(threeOptionsStep());
+  await alice.answer(step.id, "q1", { option: "A" });
+  await bob.answer(step.id, "q1", { option: "C" });
+  assert.equal((await facilitator.close(step.id)).body.questions[0].status, "to_reask");
   return { alice, bob };
 }
 
-function questionReprise(id = "q2") {
-  return { ...structuredClone(etapeTroisPropositions().questions[0]), id, reprise: "q1" };
+function reaskedQuestion(id = "q2") {
+  return { ...structuredClone(threeOptionsStep().questions[0]), id, reaskOf: "q1" };
 }
 
-test("une Question reprise qui retombe sur une égalité doit être départagée par l'Animateur", async () => {
-  const { alice, bob } = await egaliteSurQ1();
-  const { corps: etape2 } = await claude.publierOuverte({ ...etapeType(2), questions: [questionReprise()] });
-  await alice.repondre(etape2.id, "q2", { proposition: "A" });
-  await bob.repondre(etape2.id, "q2", { proposition: "C" });
+test("a re-asked Question that ends in a tie again must be broken by the Facilitator", async () => {
+  const { alice, bob } = await splitVoteOnQ1();
+  const { body: step2 } = await claude.publishOpen({ ...stepFixture(2), questions: [reaskedQuestion()] });
+  await alice.answer(step2.id, "q2", { option: "A" });
+  await bob.answer(step2.id, "q2", { option: "C" });
 
-  const sans = await animateur.clore(etape2.id);
-  assert.equal(sans.statut, 409);
-  assert.deepEqual(sans.corps.aDepartager, [{ question: "q2", exAequo: ["A", "C"] }]);
+  const without = await facilitator.close(step2.id);
+  assert.equal(without.status, 409);
+  assert.deepEqual(without.body.tied, [{ question: "q2", tiedOptions: ["A", "C"] }]);
 
-  const avec = await animateur.clore(etape2.id, { departages: { q2: "C" } });
-  assert.equal(avec.statut, 200);
-  assert.equal(avec.corps.questions[0].statut, "retenue");
-  assert.equal(avec.corps.questions[0].retenue, "C");
+  const withTiebreak = await facilitator.close(step2.id, { tiebreaks: { q2: "C" } });
+  assert.equal(withTiebreak.status, 200);
+  assert.equal(withTiebreak.body.questions[0].status, "selected");
+  assert.equal(withTiebreak.body.questions[0].selected, "C");
 });
 
-test("une Question ne peut reprendre qu'une Question à reposer d'une Étape close", async () => {
-  await claude.demarrerSeance();
-  const alice = await rejoindre("alice");
-  const { corps: etape } = await claude.publierOuverte(etapeType());
-  await alice.repondre(etape.id, "q1", { proposition: "A" });
-  await animateur.clore(etape.id); // q1 retenue, pas à reposer
+test("a Question can only re-ask a to-re-ask Question from a closed Step", async () => {
+  await claude.startSession();
+  const alice = await joinAs("alice");
+  const { body: step } = await claude.publishOpen(stepFixture());
+  await alice.answer(step.id, "q1", { option: "A" });
+  await facilitator.close(step.id); // q1 selected, not to re-ask
 
-  const retenue = await claude.publier({ ...etapeType(2), questions: [questionReprise()] });
-  assert.equal(retenue.statut, 400);
-  assert.match(retenue.corps.erreur ?? JSON.stringify(retenue.corps), /q1/);
+  const selected = await claude.publish({ ...stepFixture(2), questions: [reaskedQuestion()] });
+  assert.equal(selected.status, 400);
+  assert.match(selected.body.error ?? JSON.stringify(selected.body), /q1/);
 
-  const inconnue = await claude.publier({ ...etapeType(2), questions: [{ ...questionReprise(), reprise: "q9" }] });
-  assert.equal(inconnue.statut, 400);
+  const unknown = await claude.publish({ ...stepFixture(2), questions: [{ ...reaskedQuestion(), reaskOf: "q9" }] });
+  assert.equal(unknown.status, 400);
 });
 
-test("le Récapitulatif donne le Numéro de chaque Question et signale la Question qu'une autre reprend", async () => {
-  await egaliteSurQ1();
-  const { corps: etape2 } = await claude.publierOuverte({ ...etapeType(2), questions: [questionReprise()] });
-  await animateur.clore(etape2.id); // aucun Vote : la recommandée est retenue
+test("the Summary gives each Question's number and flags the Question that another re-asks", async () => {
+  await splitVoteOnQ1();
+  const { body: step2 } = await claude.publishOpen({ ...stepFixture(2), questions: [reaskedQuestion()] });
+  await facilitator.close(step2.id); // no Vote: the recommended option is selected
 
-  const { corps } = await claude.terminer();
-  const lignes = corps.recapitulatif.split("\n");
-  assert.ok(lignes.includes("- **Q1 · Où vit l'outil** : à reposer (partage des Votes)"), corps.recapitulatif);
-  assert.ok(lignes.includes("- **Q2 · Où vit l'outil** (reprise de Q1) : Dépôt dédié (recommandée)"), corps.recapitulatif);
+  const { body } = await claude.end();
+  const lines = body.summary.split("\n");
+  assert.ok(lines.includes("- **Q1 · Where does the tool live**: to re-ask (split vote)"), body.summary);
+  assert.ok(
+    lines.includes("- **Q2 · Where does the tool live** (re-asked from Q1): Dedicated repository (recommended)"),
+    body.summary,
+  );
 });
 
-test("la vue des Joueurs indique le Numéro de la Question qu'une Question reprend", async () => {
-  const { alice } = await egaliteSurQ1();
-  await claude.publierOuverte({ ...etapeType(2), questions: [questionReprise()] });
-  const [q2] = (await alice.etat()).etape.questions;
-  assert.equal(q2.repriseDe, 1);
+test("the Players' view gives the number of the Question that a Question re-asks", async () => {
+  const { alice } = await splitVoteOnQ1();
+  await claude.publishOpen({ ...stepFixture(2), questions: [reaskedQuestion()] });
+  const [q2] = (await alice.state()).step.questions;
+  assert.equal(q2.reaskOfNumber, 1);
 });
 
-test("un identifiant de Question déjà utilisé dans une Étape précédente est refusé", async () => {
-  await egaliteSurQ1();
-  const reutilise = await claude.publier({ ...etapeType(2), questions: [questionReprise("q1")] });
-  assert.equal(reutilise.statut, 400);
-  assert.match(reutilise.corps.erreur, /q1/);
+test("a Question id already used in a previous Step is refused", async () => {
+  await splitVoteOnQ1();
+  const reused = await claude.publish({ ...stepFixture(2), questions: [reaskedQuestion("q1")] });
+  assert.equal(reused.status, 400);
+  assert.match(reused.body.error, /q1/);
 });
 
-test("une Question à reposer ne peut être reprise qu'une fois", async () => {
-  await egaliteSurQ1();
-  const doublon = await claude.publier({
-    ...etapeType(2),
-    questions: [questionReprise("q2"), questionReprise("q3")],
+test("a to-re-ask Question can only be re-asked once", async () => {
+  await splitVoteOnQ1();
+  const duplicate = await claude.publish({
+    ...stepFixture(2),
+    questions: [reaskedQuestion("q2"), reaskedQuestion("q3")],
   });
-  assert.equal(doublon.statut, 400);
+  assert.equal(duplicate.status, 400);
 
-  const premiere = await claude.publier({ ...etapeType(2), questions: [questionReprise("q2")] });
-  assert.equal(premiere.statut, 201);
+  const first = await claude.publish({ ...stepFixture(2), questions: [reaskedQuestion("q2")] });
+  assert.equal(first.status, 201);
 });
 
-test("une Question reprise ne peut plus être reposée : la repose est unique", async () => {
-  const { alice } = await egaliteSurQ1();
-  const { corps: etape2 } = await claude.publierOuverte({ ...etapeType(2), questions: [questionReprise("q2")] });
-  await alice.repondre(etape2.id, "q2", { proposition: "A" });
+test("a re-asked Question can no longer be re-asked: re-asking happens only once", async () => {
+  const { alice } = await splitVoteOnQ1();
+  const { body: step2 } = await claude.publishOpen({ ...stepFixture(2), questions: [reaskedQuestion("q2")] });
+  await alice.answer(step2.id, "q2", { option: "A" });
 
-  const refus = await animateur.clore(etape2.id, { aReposer: ["q2"] });
-  assert.equal(refus.statut, 409);
-  assert.match(refus.corps.erreur, /q2/);
+  const refusal = await facilitator.close(step2.id, { toReask: ["q2"] });
+  assert.equal(refusal.status, 409);
+  assert.match(refusal.body.error, /q2/);
 
-  assert.equal((await animateur.clore(etape2.id)).statut, 200);
-  const reprise = await claude.publier({ ...etapeType(3), questions: [questionReprise("q3")] });
-  assert.equal(reprise.statut, 400); // q1 est déjà reprise par q2
+  assert.equal((await facilitator.close(step2.id)).status, 200);
+  const reask = await claude.publish({ ...stepFixture(3), questions: [reaskedQuestion("q3")] });
+  assert.equal(reask.status, 400); // q1 is already re-asked by q2
+});
+
+// --- Robustness -------------------------------------------------------------
+
+test("the server starts and ignores session files it cannot read", async () => {
+  await server.close();
+  await writeFile(join(dir, "old-format.json"), JSON.stringify({ id: "x", titre: "Séance", etapes: [], joueurs: [] }));
+  await writeFile(join(dir, "truncated.json"), '{"id": "y", "title"');
+  server = await start({ port: 0, dir, token: TOKEN });
+
+  assert.deepEqual((await request("GET", "/api/state")).body, { session: null });
+});
+
+test("closing with malformed decisions is refused with 400, and the Step stays open", async () => {
+  await claude.startSession();
+  const { body: step } = await claude.publishOpen(stepFixture());
+
+  assert.equal((await facilitator.close(step.id, { toReask: "q1" })).status, 400);
+  assert.equal((await facilitator.close(step.id, { tiebreaks: null })).status, 400);
+  assert.equal((await facilitator.close(step.id)).status, 200);
+});
+
+test("a Step needs whole-number progress fields", async () => {
+  await claude.startSession();
+  for (const bad of [{ settled: "six" }, { remaining: -1 }, { number: 1.5 }, { number: undefined }]) {
+    const response = await claude.publish({ ...stepFixture(), ...bad });
+    assert.equal(response.status, 400, JSON.stringify(bad));
+  }
+  assert.equal((await claude.publish(stepFixture())).status, 201);
+});
+
+test("starting a new Session releases the requests waiting for a result", async () => {
+  await claude.startSession();
+  const { body: step } = await claude.publishOpen(stepFixture());
+  const waiting = claude.result(step.id, { wait: true });
+
+  await claude.startSession("Another session");
+
+  const released = await Promise.race([waiting, new Promise((resolve) => setTimeout(() => resolve("hung"), 1000))]);
+  assert.notEqual(released, "hung");
+  assert.equal(released.status, 409);
 });

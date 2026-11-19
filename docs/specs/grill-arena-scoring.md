@@ -2,206 +2,205 @@
 label: ready-for-agent
 ---
 
-# Grill Arena : scoring, visibilité des Votes, égalités, déroulé d'une Séance
+# Grill Arena: scoring, Vote visibility, ties, flow of a Session
 
-Vocabulaire : `GLOSSARY.md` à la racine du dépôt. Issue de deux Séances de grilling menées sur grill-arena lui-même : une Séance de brainstorm (« Interface et scoring de grill-arena », 5 Étapes, 14 Questions), puis un cadrage fait en jouant une Séance (déroulé, onglets, Co-animateur). Les décisions ci-dessous sont celles de ces Séances ; les points marqués **à confirmer** ne l'ont pas été.
+Vocabulary: `GLOSSARY.md` at the root of the repository. Stemming from two grilling Sessions run on grill-arena itself: a brainstorm Session ("grill-arena interface and scoring", 5 Steps, 14 Questions), then a framing done by playing a Session (flow, tabs, Co-facilitator). The decisions below are those of these Sessions; the points marked **to confirm** were not settled.
 
-Principe de la Séance : c'est un échange oral sur les specs. En principe, tous les Joueurs votent la même chose ; un désaccord signale un point important non dit. Le scoring doit donc faire remonter les désaccords, pas les effacer. L'Animateur est un Joueur comme les autres, avec des commandes en plus.
+Principle of the Session: it is an oral exchange about the specs. In principle, all Players vote the same thing; a disagreement signals an important unspoken point. Scoring must therefore bring disagreements to the surface, not erase them. The Facilitator is a Player like the others, with extra controls.
 
 ## Problem Statement
 
-**Scoring.** Le scoring actuel récompense la contradiction : voter contre la recommandée rapporte un Bonus, alors que le but est de converger à l'oral. Il récompense aussi des Commentaires sans valeur, peut biaiser le résultat par la gamification, et les Points s'affichent en direct pendant la Séance, ce qui oriente les Votes. La règle « sans majorité nette, la recommandée gagne » fait disparaître les désaccords : sur la Séance de brainstorm, quatre Questions ont été tranchées sur des répartitions 1-1, sans que le partage soit discuté.
+**Scoring.** The previous scoring rewarded contradiction: voting against the recommended option earned a Bonus, whereas the goal is to converge out loud. It also rewarded worthless Comments, could bias the result through gamification, and Points were displayed live during the Session, which steered the Votes. The rule "without a clear majority, the recommended option wins" made disagreements disappear: in the brainstorm Session, four Questions were settled on 1-1 distributions, without the split being discussed.
 
-**Déroulé.** En jouant une Séance, plusieurs frictions sont apparues :
-- le numéro des Questions repart de 1 à chaque Étape, ce qui empêche de s'y référer à l'oral ;
-- un Commentaire peut être perdu : il n'est envoyé qu'à la sortie du champ, et une clôture pendant la saisie le rejette en silence ;
-- à la clôture, le prochain Vote arrive sans que le groupe ait le temps de discuter les résultats, et les résultats des Étapes anciennes ne sont plus consultables ;
-- le Prompt initial reste affiché et modifiable pendant toute la Séance, alors qu'il n'est utile qu'au départ ;
-- une Question qui renvoie à une Question précédente oblige à la retrouver à la main ;
-- si l'Animateur s'absente, la Séance est bloquée : personne d'autre ne peut ouvrir ni clore une Étape.
+**Flow.** While playing a Session, several frictions appeared:
+- the Question number restarted at 1 in each Step, which prevented referring to them out loud;
+- a Comment could be lost: it was only sent when leaving the field, and a closing during typing rejected it silently;
+- at closing, the next Vote arrived without the group having time to discuss the results, and the results of older Steps were no longer viewable;
+- the Initial prompt stayed displayed and editable throughout the Session, whereas it is only useful at the start;
+- a Question referring to a previous Question forced one to find it by hand;
+- if the Facilitator stepped away, the Session was blocked: nobody else could open or close a Step.
 
 ## Solution
 
-Le scoring devient une statistique de participation, publiée en fin de Séance. Les Votes restent masqués par défaut ; l'Animateur peut activer la répartition en direct. Un partage ne se tranche plus par la recommandée : la Question revient à l'oral. L'Animateur reste le seul à trancher après une repose.
+Scoring becomes a participation statistic, published at the end of the Session. Votes stay hidden by default; the Facilitator can enable the live distribution. A split vote is no longer settled by the recommended option: the Question comes back out loud. The Facilitator remains the only one to decide after a re-ask.
 
-Le déroulé devient piloté : chaque Étape publiée par Claude attend l'Ouverture par l'Animateur, ce qui laisse le temps de discuter les résultats de la précédente. Les Questions ont un Numéro continu sur la Séance. La page s'organise en onglets (Étape en cours, Résultats de toutes les Étapes closes, Animateur). Les Commentaires s'enregistrent tout seuls. Une mention `Q4` dans une Question ouvre une infobulle qui rappelle la Question et ce qui a été voté. L'Animateur peut désigner des Co-animateurs qui font avancer la Séance à sa place.
+The flow becomes driven: each Step published by Claude waits for the Opening by the Facilitator, which leaves time to discuss the results of the previous one. Questions have a continuous Number over the Session. The page is organized in tabs (current Step, Results of all closed Steps, Facilitator). Comments save themselves. A mention `Q4` in a Question opens a tooltip recalling the Question and what was voted. The Facilitator can appoint Co-facilitators who move the Session forward in their place.
 
 ## User Stories
 
-### Scoring et visibilité
+### Scoring and visibility
 
-1. En tant que Joueur, je veux que voter contre la recommandée ne me rapporte rien de plus, afin de ne pas être incité à la contradiction.
-2. En tant que Joueur, je veux que mes Commentaires soient reconnus, afin de ne pas me sentir pénalisé quand j'argumente.
-3. En tant que Joueur, je veux voter sans voir le Tableau des Points pendant la Séance, afin de ne pas être influencé par le classement.
-4. En tant que Joueur, je veux voir en fin de Séance les statistiques de participation, afin de savoir ce que la Séance a mobilisé de chacun.
-5. En tant qu'Animateur, je veux choisir avant l'Ouverture de l'Étape 1 si la répartition des Votes s'affiche en direct, afin de déclencher la discussion orale quand c'est utile.
-6. En tant qu'Animateur, je veux que la répartition, si elle est affichée, n'apparaisse qu'à partir de la moitié des votants, afin de ne pas orienter les premiers Votes.
-7. En tant qu'Animateur, je veux voir le scoring et le Tableau à tout moment, même pendant la Séance, afin de piloter la discussion.
-8. En tant qu'Animateur, je veux pouvoir publier les statistiques quand je le décide, afin de les garder pour la fin ou de les montrer plus tôt.
-9. En tant qu'Animateur, je veux qu'une Question partagée (égalité) soit renvoyée à l'oral, afin que le désaccord soit discuté avant d'être tranché.
-10. En tant qu'Animateur, je veux trancher une Question après une seule repose, afin de ne pas faire boucler la discussion.
-11. En tant qu'Animateur, je veux pouvoir mettre une Question de côté et la noter dans le Récapitulatif, afin de garder une trace sans la trancher. **À confirmer** (Q14 de la Séance de brainstorm : 1-1, la recommandée a départagé).
-12. En tant que Claude, je veux recevoir une Question partagée sans Proposition retenue, afin de la reposer avec les Commentaires comme matière.
+1. As a Player, I want voting against the recommended option to earn me nothing more, so that I am not encouraged to contradict.
+2. As a Player, I want my Comments to be recognized, so that I do not feel penalized when I argue.
+3. As a Player, I want to vote without seeing the Points table during the Session, so that I am not influenced by the ranking.
+4. As a Player, I want to see the participation statistics at the end of the Session, so that I know what the Session drew from each person.
+5. As a Facilitator, I want to choose before the Opening of Step 1 whether the distribution of Votes is displayed live, so that I trigger oral discussion when useful.
+6. As a Facilitator, I want the distribution, if displayed, to appear only from half of the voters, so that I do not steer the first Votes.
+7. As a Facilitator, I want to see the scoring and the Scoreboard at any time, even during the Session, so that I steer the discussion.
+8. As a Facilitator, I want to be able to publish the statistics when I decide, so that I keep them for the end or show them earlier.
+9. As a Facilitator, I want a split Question (tie) to be sent back out loud, so that the disagreement is discussed before being settled.
+10. As a Facilitator, I want to settle a Question after a single re-ask, so that the discussion does not loop.
+11. As a Facilitator, I want to be able to set a Question aside and note it in the Summary, so that I keep a trace without settling it. **To confirm** (Q14 of the brainstorm Session: 1-1, the recommended option broke the tie).
+12. As Claude, I want to receive a split Question without a Selected option, so that I re-ask it with the Comments as material.
 
-### Numéros et références
+### Numbers and references
 
-13. En tant que Joueur, je veux que chaque Question ait un Numéro unique et continu sur toute la Séance, afin de m'y référer à l'oral sans ambiguïté.
-14. En tant que Joueur, je veux qu'une Question reposée reçoive un nouveau Numéro et indique « reprise de Q4 », afin de faire le lien avec la Question d'origine.
-15. En tant que Claude, je veux recevoir le Numéro de chaque Question dans les résultats d'une Étape, afin d'employer les mêmes Numéros que les Joueurs.
-16. En tant que Joueur, je veux qu'une mention `Q4` dans le texte d'une Question ou d'une Proposition soit cliquable quand Q4 appartient à une Étape close, afin de retrouver ce qui a été décidé sans chercher.
-17. En tant que Joueur, je veux que l'infobulle d'une référence affiche le titre de la Question, son issue (Proposition retenue ou « à reposer »), la répartition des Votes et mon propre Vote, afin de me rappeler le contexte.
-18. En tant que Joueur sur téléphone, je veux ouvrir l'infobulle d'un toucher et la fermer d'un toucher ailleurs, afin de la lire sans survol.
-19. En tant que Joueur, je veux qu'une mention d'une Question de l'Étape en cours, ou d'un Numéro qui n'existe pas, reste du texte brut, afin qu'aucun Vote ne soit révélé trop tôt.
+13. As a Player, I want each Question to have a unique and continuous Number over the whole Session, so that I refer to it out loud without ambiguity.
+14. As a Player, I want a re-asked Question to receive a new Number and show "re-asked from Q4", so that I link it to the original Question.
+15. As Claude, I want to receive the Number of each Question in the results of a Step, so that I use the same Numbers as the Players.
+16. As a Player, I want a mention `Q4` in the text of a Question or an Option to be clickable when Q4 belongs to a closed Step, so that I find what was decided without searching.
+17. As a Player, I want the tooltip of a reference to display the Question title, its outcome (Selected option or "to re-ask"), the distribution of Votes and my own Vote, so that the context is recalled to me.
+18. As a Player on a phone, I want to open the tooltip with a tap and close it with a tap elsewhere, so that I read it without hovering.
+19. As a Player, I want a mention of a Question of the current Step, or of a Number that does not exist, to remain plain text, so that no Vote is revealed too early.
 
-### Ouverture des Étapes
+### Opening of Steps
 
-20. En tant qu'Animateur, je veux que chaque Étape publiée par Claude, la première comprise, reste en attente jusqu'à ce que je l'ouvre, afin de laisser le temps de discuter les résultats avant de voter à nouveau.
-21. En tant qu'Animateur, je veux un bouton « Ouvrir l'Étape N » visible quel que soit l'onglet affiché, afin de relancer le groupe sans chercher une commande.
-22. En tant que Joueur, je veux lire « L'Animateur ouvrira l'Étape N » tant que l'Étape est en attente, afin de savoir que j'attends et que la page n'est pas figée.
-23. En tant que Joueur, je veux garder les résultats de l'Étape close sous les yeux pendant l'attente, afin de les discuter à l'oral.
-24. En tant que Joueur, je veux ne pas voir les Questions d'une Étape tant qu'elle n'est pas ouverte, afin que personne ne vote ni ne lise à l'avance, y compris par l'API.
-25. En tant que Claude, je veux publier l'Étape suivante sans attendre l'Ouverture, et continuer à attendre la clôture avec le même long-poll, afin de ne pas modifier mon déroulé.
+20. As a Facilitator, I want each Step published by Claude, the first included, to stay pending until I open it, so that there is time to discuss the results before voting again.
+21. As a Facilitator, I want an "Open Step N" button visible whichever tab is displayed, so that I restart the group without looking for a control.
+22. As a Player, I want to read "The Facilitator will open Step N" as long as the Step is pending, so that I know I am waiting and that the page is not frozen.
+23. As a Player, I want to keep the results of the closed Step in view while waiting, so that I discuss them out loud.
+24. As a Player, I want not to see the Questions of a Step until it is open, so that nobody votes or reads in advance, including through the API.
+25. As Claude, I want to publish the next Step without waiting for the Opening, and keep waiting for closing with the same long-poll, so that my flow does not change.
 
-### Onglets et résultats
+### Tabs and results
 
-26. En tant que Joueur, je veux un onglet « Étape en cours », ouvert par défaut, afin de voter sans bruit.
-27. En tant que Joueur, je veux un onglet « Résultats » qui liste toutes les Étapes closes, la plus récente en premier, afin de relire n'importe quelle décision, mon Vote et les Commentaires.
-28. En tant que Joueur, je veux que « Règles » et « Tableau des scores » restent des boutons d'en-tête, afin de les ouvrir sans quitter mon onglet.
-29. En tant qu'Animateur, je veux un onglet « Animateur » qui ne s'ouvre que depuis le lien avec jeton, afin que les Joueurs ne voient pas de commandes qu'ils ne peuvent pas utiliser.
-30. En tant qu'Animateur, je veux que la zone de clôture collante reste visible au-dessus des onglets, afin de clore sans changer d'onglet.
-31. En tant qu'Animateur, je veux retrouver dans mon onglet la ligne « Prochaine action », le Prompt initial, l'accès Joueurs (URL et QR code), le Tableau, les statistiques et le réglage de la répartition, afin de piloter la Séance depuis un seul endroit.
-32. En tant qu'Animateur, je veux rejoindre la Séance avec un pseudo et voter comme un Joueur, afin de participer au grilling.
+26. As a Player, I want a "Current Step" tab, open by default, so that I vote without noise.
+27. As a Player, I want a "Results" tab that lists all closed Steps, most recent first, so that I reread any decision, my Vote and the Comments.
+28. As a Player, I want "Rules" and "Scoreboard" to remain header buttons, so that I open them without leaving my tab.
+29. As a Facilitator, I want a "Facilitator" tab that only opens from the link with the token, so that Players do not see controls they cannot use.
+30. As a Facilitator, I want the sticky closing area to remain visible above the tabs, so that I close without changing tab.
+31. As a Facilitator, I want to find in my tab the "Next action" line, the Initial prompt, the Players access (URL and QR code), the Scoreboard, the statistics and the distribution setting, so that I steer the Session from a single place.
+32. As a Facilitator, I want to join the Session with a nickname and vote like a Player, so that I take part in the grilling.
 
-### Prompt initial
+### Initial prompt
 
-33. En tant que Joueur, je veux lire le Prompt initial avant le lancement de la Séance, afin de savoir de quoi on va parler.
-34. En tant qu'Animateur, je veux modifier le Prompt initial depuis mon onglet jusqu'à l'Ouverture de l'Étape 1, et que les Joueurs voient la version à jour, afin de le corriger avant de commencer.
-35. En tant que Joueur, je veux que le Prompt initial disparaisse de mon écran après l'Ouverture de l'Étape 1, afin de ne pas être distrait par un texte devenu inutile.
-36. En tant qu'Animateur, je veux relire le Prompt initial après le lancement, en lecture seule, afin de garder le contexte sans pouvoir le changer par erreur.
-37. En tant qu'Animateur, je veux que le serveur refuse toute modification du Prompt initial après le lancement, y compris venant de Claude, afin que le contexte de départ reste fiable.
+33. As a Player, I want to read the Initial prompt before the Session starts, so that I know what we are going to talk about.
+34. As a Facilitator, I want to edit the Initial prompt from my tab until the Opening of Step 1, and have Players see the up-to-date version, so that I fix it before starting.
+35. As a Player, I want the Initial prompt to disappear from my screen after the Opening of Step 1, so that I am not distracted by a text that has become useless.
+36. As a Facilitator, I want to reread the Initial prompt after the start, read-only, so that I keep the context without being able to change it by mistake.
+37. As a Facilitator, I want the server to refuse any modification of the Initial prompt after the start, including from Claude, so that the starting context stays reliable.
 
-### Commentaires
+### Comments
 
-38. En tant que Joueur, je veux que mon Commentaire s'enregistre tout seul environ une seconde après ma dernière frappe, afin de ne pas le perdre en oubliant de quitter le champ.
-39. En tant que Joueur, je veux qu'il s'enregistre aussi quand je quitte le champ, change d'application ou ferme la page, afin qu'aucune saisie ne reste en suspens.
-40. En tant que Joueur, je veux voir « ✓ Enregistré » ou « Modifications non enregistrées » à côté du champ, afin de connaître l'état de mon texte.
-41. En tant que Joueur dont l'Étape a été close avant l'envoi, je veux que mon texte reste affiché avec le message « Étape close avant l'envoi : copiez votre texte », afin de ne pas le perdre en silence.
+38. As a Player, I want my Comment to save itself about one second after my last keystroke, so that I do not lose it by forgetting to leave the field.
+39. As a Player, I want it to also save when I leave the field, switch application or close the page, so that no input stays pending.
+40. As a Player, I want to see "✓ Saved" or "Unsaved changes" next to the field, so that I know the state of my text.
+41. As a Player whose Step was closed before sending, I want my text to stay displayed with the message "Step closed before sending: copy your text", so that I do not lose it silently.
 
-### Co-animateur
+### Co-facilitator
 
-42. En tant qu'Animateur, je veux désigner un ou plusieurs Joueurs comme Co-animateurs depuis une liste de mon onglet, afin que la Séance continue si je m'absente.
-43. En tant qu'Animateur, je veux révoquer un Co-animateur à tout moment, afin de reprendre seul le pilotage.
-44. En tant que Co-animateur, je veux ouvrir et clore les Étapes, départager les ex æquo et reposer des Questions, afin de faire avancer la Séance à la place de l'Animateur.
-45. En tant que Co-animateur, je veux voir le Tableau et les statistiques, afin de piloter la discussion.
-46. En tant qu'Animateur, je veux que le Co-animateur ne puisse pas modifier le Prompt initial, régler la répartition, publier les statistiques ni désigner d'autres Co-animateurs, afin de garder la maîtrise du cadre.
-47. En tant qu'Animateur, je veux qu'une clôture ou une Ouverture déjà faite par quelqu'un d'autre soit refusée sans effet, afin que nos deux pages ne se contredisent pas.
-48. En tant qu'Animateur, je veux que les Co-animateurs restent désignés après un redémarrage du serveur, afin de ne pas les redésigner.
-49. En tant qu'Animateur, je veux voir un avertissement à la désignation d'un Co-animateur, afin de savoir que quiconque reprend son pseudo obtient ses droits.
+42. As a Facilitator, I want to appoint one or more Players as Co-facilitators from a list in my tab, so that the Session continues if I step away.
+43. As a Facilitator, I want to revoke a Co-facilitator at any time, so that I take back the steering alone.
+44. As a Co-facilitator, I want to open and close Steps, break ties and re-ask Questions, so that I move the Session forward in place of the Facilitator.
+45. As a Co-facilitator, I want to see the Scoreboard and the statistics, so that I steer the discussion.
+46. As a Facilitator, I want the Co-facilitator not to be able to edit the Initial prompt, set the distribution, publish the statistics nor appoint other Co-facilitators, so that I keep control of the framework.
+47. As a Facilitator, I want a closing or an Opening already done by someone else to be refused without effect, so that our two pages do not contradict each other.
+48. As a Facilitator, I want Co-facilitators to remain appointed after a server restart, so that I do not have to appoint them again.
+49. As a Facilitator, I want to see a warning when appointing a Co-facilitator, so that I know that anyone who resumes their nickname gets their rights.
 
 ## Implementation Decisions
 
 ### Scoring
 
-- **Abstention générale.** Si personne ne vote, la recommandée est retenue (spec UX, story 9), sans Point.
-- **Bonus supprimé.** Seul le Point reste, attribué à chaque Joueur dont le Vote porte sur la Proposition retenue. Les Abstentions ne rapportent rien.
-- **Commentaires.** Ils ne rapportent des Points que sur les Questions reposées. Le montant n'a pas été tranché (un Point par Commentaire, ou autre) : **à confirmer**.
-- **Scoring publié en fin de Séance** sous forme de statistiques de participation : Votes, Commentaires et Abstentions par Joueur. Le Points dérivé de ces statistiques est **à confirmer**.
-- **Publication.** Les statistiques sont visibles de l'Animateur et des Co-animateurs à tout moment. Elles sont publiées à tous à la fin de la Séance, ou plus tôt à la demande de l'Animateur seul.
+- **General abstention.** If nobody votes, the recommended option is selected (UX spec, story 9), with no Point.
+- **No Bonus.** Only the Point remains, awarded to each Player whose Vote is for the Selected option. Abstentions earn nothing.
+- **Comments.** They only earn Points on re-asked Questions. The amount was not settled (one Point per Comment, or other): **to confirm**.
+- **Scoring published at the end of the Session** as participation statistics: Votes, Comments and Abstentions per Player. The Point derived from these statistics is **to confirm**.
+- **Publication.** The statistics are visible to the Facilitator and Co-facilitators at any time. They are published to everyone at the end of the Session, or earlier at the Facilitator's request alone.
 
-### Visibilité
+### Visibility
 
-- **Tableau** : masqué des Joueurs pendant la Séance, visible de l'Animateur et des Co-animateurs. Il est publié avec les statistiques.
-- **Répartition des Votes** : masquée par défaut. L'Animateur seul peut l'activer, depuis son onglet, jusqu'à l'Ouverture de l'Étape 1 ; l'option est portée par la Séance et n'est plus un paramètre du démarrage envoyé par Claude. Quand elle est activée, la répartition n'apparaît qu'à partir de la moitié des votants.
+- **Scoreboard**: hidden from Players during the Session, visible to the Facilitator and Co-facilitators. It is published with the statistics.
+- **Distribution of Votes**: hidden by default. Only the Facilitator can enable it, from their tab, until the Opening of Step 1; the option belongs to the Session and is not a start parameter sent by Claude. When enabled, the distribution only appears from half of the voters.
 
-### Clôture et égalité
+### Closing and ties
 
-- **Partage.** Une Question sans majorité nette (égalité entre Propositions) n'est pas tranchée par la recommandée : elle est renvoyée à l'oral, c'est-à-dire reposée avec ses Commentaires. Le module Arbitrage distingue ce cas du cas « un seul en tête », qui reste retenu sans intervention.
-- **Repose.** Après une seule repose, l'Animateur tranche la Question à la clôture suivante, avec les Propositions de l'Étape courante.
-- **Mise de côté** (Q14) : l'Animateur peut noter une Question dans le Récapitulatif sans la trancher. **À confirmer**.
+- **Split vote.** A Question without a clear majority (tie between Options) is not settled by the recommended option: it is sent back out loud, that is, re-asked with its Comments. The Arbitration module distinguishes this case from the "single leader" case, which remains selected without intervention.
+- **Re-ask.** After a single re-ask, the Facilitator settles the Question at the next closing, with the Options of the current Step.
+- **Setting aside** (Q14): the Facilitator can note a Question in the Summary without settling it. **To confirm**.
 
-### Numéro des Questions
+### Question Numbers
 
-- Le serveur attribue le Numéro à la publication de l'Étape, de façon continue sur la Séance dans l'ordre de publication. Il est exposé dans la vue des Joueurs et dans les résultats renvoyés à Claude.
-- Une Question reposée est publiée avec un nouvel identifiant et reçoit un nouveau Numéro. Pour afficher « reprise de Qn », Claude indique à la publication l'identifiant de la Question qu'elle reprend ; le serveur en déduit le Numéro d'origine. **À confirmer** (champ optionnel de la Question publiée).
-- Le Récapitulatif utilise les Numéros.
+- The server assigns the Number when the Step is published, continuously over the Session in publication order. It is exposed in the Players' view and in the results returned to Claude.
+- A re-asked Question is published with a new identifier and receives a new Number. To display "re-asked from Qn", Claude gives at publication, in the `reaskOf` field of the Question, the identifier of the Question it takes over; the server derives the original Number from it. A `reaskOf` that does not designate a Question to re-ask of a closed Step, or that is already taken over, is refused (400).
+- The Summary uses the Numbers.
 
-### Cycle de vie d'une Étape
+### Life cycle of a Step
 
-- Une Étape a trois états : **en attente** (publiée, non ouverte), **ouverte**, **close**. Le seul passage de « en attente » à « ouverte » est l'Ouverture par l'Animateur ou un Co-animateur, y compris pour l'Étape 1. Une Ouverture sur une Étape déjà ouverte ou close est refusée (409) sans effet.
-- Claude publie sans attendre l'Ouverture, et une Étape ne peut être publiée tant que la précédente n'est pas close. Le long-poll de résultat répond comme aujourd'hui à la clôture : le skill n'a pas d'autre attente à gérer.
-- Tant qu'une Étape est en attente, la vue d'un Joueur ne contient ni ses Questions ni leurs Propositions ; elle contient seulement son numéro et les résultats des Étapes closes. Un Vote ou un Commentaire sur une Étape en attente est refusé (409).
-- Les Séances déjà sauvegardées, qui portent un état ouvert/clos, sont relues sans perte.
-- Les messages déduits de l'état (« Prochaine action », « Claude prépare la suite ») gagnent un état : après une clôture, « Claude prépare la suite » ; Étape publiée mais non ouverte, « Ouvrir l'Étape N ».
+- A Step has three states: **pending** (published, not opened), **open**, **closed**. The only transition from "pending" to "open" is the Opening by the Facilitator or a Co-facilitator, including for Step 1. An Opening on a Step already open or closed is refused (409) with no effect.
+- Claude publishes without waiting for the Opening, and a Step cannot be published as long as the previous one is not closed. The result long-poll answers at closing as before: the skill has no other wait to manage.
+- As long as a Step is pending, a Player's view contains neither its Questions nor their Options; it only contains its number and the results of the closed Steps. A Vote or a Comment on a pending Step is refused (409).
+- The messages deduced from the state ("Next action", "Claude is preparing the next Step") gain a state: after a closing, "Claude is preparing the next Step"; Step published but not opened, "Open Step N".
 
-### Prompt initial
+### Initial prompt
 
-- Le Prompt initial est fourni au démarrage de la Séance et modifiable par l'Animateur. La **première Ouverture** (Étape 1) le verrouille : toute modification est ensuite refusée (409), par l'Animateur comme par Claude.
-- Avant ce verrou, la vue de tout Joueur contient le prompt. Après, elle ne le contient plus, sauf pour l'Animateur authentifié, qui le reçoit toujours, en lecture seule.
+- The Initial prompt is provided when the Session starts and can be edited by the Facilitator. The **first Opening** (Step 1) locks it: any modification is then refused (409), by the Facilitator as well as by Claude.
+- Before this lock, any Player's view contains the prompt. After, it no longer does, except for the authenticated Facilitator, who always receives it, read-only.
 
-### Onglets de la page
+### Page tabs
 
-- Onglets **Étape en cours** (par défaut), **Résultats** et **Animateur** (lien avec jeton uniquement). Les boutons « Règles » et « Tableau des scores » restent dans l'en-tête.
-- **Résultats** liste toutes les Étapes closes, la plus récente d'abord : Numéro et titre de chaque Question, répartition, Proposition retenue, Vote du Joueur, Commentaires. La vue des Joueurs porte donc les résultats de toutes les Étapes closes, pas seulement de la précédente ; la notion d'« Étape précédente » disparaît.
-- **Animateur** contient : la ligne « Prochaine action » ; le Prompt initial (éditable avant le lancement, en lecture seule ensuite) ; l'accès Joueurs (URL et QR code) ; le Tableau et les statistiques avec le bouton « Publier les statistiques » ; la case « Afficher la répartition en direct » (jusqu'à l'Ouverture de l'Étape 1) ; la liste des Joueurs pour désigner ou révoquer des Co-animateurs.
-- La **zone de clôture collante** reste au-dessus des onglets, quel que soit l'onglet actif, et porte aussi le bouton d'Ouverture. Un Co-animateur y a accès.
-- L'Animateur est aussi un Joueur : il rejoint avec un pseudo, vote et compte dans les votants et dans le Tableau.
+- Tabs **Current Step** (default), **Results** and **Facilitator** (token link only). The "Rules" and "Scoreboard" buttons remain in the header.
+- **Results** lists all closed Steps, most recent first: Number and title of each Question, distribution, Selected option, the Player's Vote, Comments. The Players' view therefore carries the results of all closed Steps, not only the previous one.
+- **Facilitator** contains: the "Next action" line; the Initial prompt (editable before the start, read-only afterwards); the Players access (URL and QR code); the Scoreboard and the statistics with the "Publish statistics" button; the "Show live distribution" checkbox (until the Opening of Step 1); the list of Players to appoint or revoke Co-facilitators.
+- The **sticky closing area** stays above the tabs, whichever tab is active, and also carries the Opening button. A Co-facilitator has access to it.
+- The Facilitator is also a Player: they join with a nickname, vote and count among the voters and on the Scoreboard.
 
-### Commentaires
+### Comments
 
-- L'enregistrement se déclenche environ une seconde après la dernière frappe, à la perte du focus, et quand la page passe en arrière-plan ou se ferme. L'indicateur « ✓ Enregistré » / « Modifications non enregistrées » est conservé.
-- Si le serveur refuse l'envoi parce que l'Étape est close, le texte reste dans le champ avec le message « Étape close avant l'envoi : copiez votre texte ».
+- Saving is triggered about one second after the last keystroke, on loss of focus, and when the page goes to the background or closes. The "✓ Saved" / "Unsaved changes" indicator is kept.
+- If the server refuses the submission because the Step is closed, the text stays in the field with the message "Step closed before sending: copy your text".
 
-### Références entre Questions
+### References between Questions
 
-- La page détecte les mentions `Qn` dans le corps des Questions et les libellés des Propositions. Elle les rend cliquables quand `n` est le Numéro d'une Question d'une Étape close ; sinon le texte reste brut. Le skill n'a rien à changer.
-- L'infobulle affiche le titre, l'issue (Proposition retenue ou « à reposer »), la répartition des Votes et le Vote du Joueur. Pour une Question reposée, le Numéro courant indique « reprise de Qn ». Elle s'ouvre au survol ou au toucher et se ferme au toucher ailleurs. Elle n'expose rien de plus que l'onglet Résultats.
+- The page detects `Qn` mentions in the body of Questions and the labels of Options. It makes them clickable when `n` is the Number of a Question of a closed Step; otherwise the text stays plain. The skill has nothing to change.
+- The tooltip displays the title, the outcome (Selected option or "to re-ask"), the distribution of Votes and the Player's Vote. For a re-asked Question, the current Number indicates "re-asked from Qn". It opens on hover or touch and closes on touch elsewhere. It exposes nothing more than the Results tab.
 
-### Co-animateur
+### Co-facilitator
 
-- L'Animateur désigne et révoque des Co-animateurs, sans limite de nombre. Cette désignation est portée par la Séance et sauvegardée avec elle.
-- Les Co-animateurs sont identifiés par l'identité de Joueur envoyée par leur page ; l'Animateur et Claude restent identifiés par le jeton.
-- **Droits du Co-animateur** : ouvrir et clore les Étapes (départager les ex æquo, reposer des Questions) ; voir le Tableau et les statistiques. Il ne peut pas : modifier le Prompt initial, régler la répartition, publier les statistiques, désigner ou révoquer. Il n'a pas accès au QR code. Ces actions interdites sont refusées (403).
-- L'Animateur garde tous ses droits en même temps que les Co-animateurs ; deux Ouvertures ou deux clôtures simultanées donnent un seul effet et un refus (409) pour la seconde.
-- **Reprise de pseudo.** La reprise n'exige toujours aucun secret : quelqu'un qui reprend le pseudo d'un Co-animateur obtient ses droits. Ce risque est accepté (groupe de confiance) et reste suivi dans `improvements.md` ; le correctif devra protéger aussi ce droit. L'onglet Animateur affiche un avertissement à la désignation.
+- The Facilitator appoints and revokes Co-facilitators, with no limit on their number. This appointment belongs to the Session and is saved with it.
+- Co-facilitators are identified by the Player identity sent by their page; the Facilitator and Claude remain identified by the token.
+- **Co-facilitator rights**: open and close Steps (break ties, re-ask Questions); see the Scoreboard and the statistics. They cannot: edit the Initial prompt, set the distribution, publish the statistics, appoint or revoke. They have no access to the QR code. These forbidden actions are refused (403).
+- The Facilitator keeps all their rights alongside the Co-facilitators; two simultaneous Openings or closings give a single effect and a refusal (409) for the second.
+- **Nickname resumption.** Resumption still requires no secret: someone who resumes a Co-facilitator's nickname gets their rights. This risk is accepted (trusted group) and tracked in `improvements.md`; the fix will have to protect this right as well. The Facilitator tab displays a warning at appointment.
 
-### Modules et interfaces modifiés
+### Modules and interfaces
 
-- **Arbitrage** (pur) : `trancher` renvoie `a_reposer` (ou un statut équivalent) pour une égalité, au lieu de retenir la recommandée. `gains` ne calcule plus de Bonus.
-- **Séance** : état d'Étape à trois valeurs ; Numéros ; Ouverture ; verrou du prompt ; liste des Co-animateurs ; option de répartition. La vue d'un Joueur ne contient plus le Tableau pendant la Séance (statistiques après la fin ou publication), masque les Questions d'une Étape en attente, expose les résultats de toutes les Étapes closes, et masque le prompt après le verrou. Les vues de l'Animateur et des Co-animateurs ajoutent ce qui leur est réservé.
-- **API HTTP** : nouvelle Ouverture d'une Étape (jeton ou Co-animateur) ; clôture ouverte aux Co-animateurs ; désignation et révocation des Co-animateurs (jeton seul) ; réglage de la répartition (jeton seul, avant la première Ouverture) ; modification du prompt (jeton seul, avant la première Ouverture) ; l'option de répartition quitte le démarrage de Séance ; publication d'une Question avec l'identifiant de la Question reprise ; la fin de Séance renvoie les statistiques en plus du Récapitulatif.
-- **Page** : onglets, bouton d'Ouverture dans la zone collante, auto-enregistrement, infobulles de référence, liste des Co-animateurs.
-- **Skill** : mentionner les Numéros des Questions dans le dialogue avec le groupe, indiquer l'identifiant de la Question reposée à la publication, et ne plus annoncer un prompt visible pendant toute la Séance.
-- **Schéma de stockage** : état d'Étape, Numéros, Co-animateurs, option de répartition et statistiques dérivées s'ajoutent ; les Séances sauvegardées avant ce changement restent lisibles.
+- **Arbitration** (pure): `decide` returns `to_reask` (or an equivalent status) for a tie, instead of selecting the recommended option. `gains` computes no Bonus.
+- **Session**: three-valued Step state; Numbers; Opening; prompt lock; Co-facilitators list; distribution option. A Player's view does not contain the Scoreboard during the Session (statistics after the end or publication), hides the Questions of a pending Step, exposes the results of all closed Steps, and hides the prompt after the lock. The Facilitator's and Co-facilitators' views add what is reserved to them.
+- **HTTP API**: Opening of a Step (token or Co-facilitator); closing open to Co-facilitators; appointment and revocation of Co-facilitators (token only); distribution setting (token only, before the first Opening); prompt modification (token only, before the first Opening); the distribution option is not a Session start parameter; publication of a Question with the identifier of the Question taken over (`reaskOf`); the end of the Session returns the statistics in addition to the Summary.
+- **Page**: tabs, Opening button in the sticky area, auto-save, reference tooltips, Co-facilitators list.
+- **Skill**: mention the Question Numbers in the dialogue with the group, give the identifier of the re-asked Question at publication, and no longer announce a prompt visible throughout the Session.
+- **Storage schema**: Step state, Numbers, Co-facilitators, distribution option and derived statistics are part of it.
 
 ## Testing Decisions
 
-Un bon test vérifie le comportement observable par un Joueur, un Co-animateur ou l'Animateur, pas la structure du code.
+A good test checks the behavior observable by a Player, a Co-facilitator or the Facilitator, not the structure of the code.
 
-- **Seam principal : l'API HTTP** (`test/api.test.js`), avec un serveur sur port libre, un dossier temporaire et un jeton imposé. Chaque règle se teste par les requêtes d'un Joueur, d'un Co-animateur et de l'Animateur :
-  - égalité renvoyée à l'oral, repose, tranche à la clôture suivante, Tableau caché pendant la Séance, statistiques à la fin ;
-  - Numéros continus d'une Étape à l'autre, nouveau Numéro pour une Question reposée et indication de la Question reprise ;
-  - Ouverture : Questions absentes de la vue d'un Joueur tant que l'Étape est en attente, Vote refusé (409), Ouverture refusée sur une Étape ouverte ou close, long-poll de résultat inchangé ;
-  - prompt : visible des Joueurs avant la première Ouverture, absent après sauf pour l'Animateur, modification refusée (409) après, y compris avec le jeton ;
-  - résultats : la vue contient les Étapes closes, la plus récente d'abord, avec le Vote du Joueur ;
-  - Co-animateur : désignation et révocation (jeton seul, refusées sinon), droits d'Ouverture et de clôture acceptés pour un Co-animateur désigné et refusés (403) pour un Joueur ordinaire, actions réservées refusées (403) au Co-animateur, désignation conservée après rechargement de la Séance ;
-  - répartition en direct : désactivée par défaut, réglable avant la première Ouverture, seuil de la moitié des votants.
-- **Seam secondaire : le module pur Arbitrage** (`test/arbitrage.test.js`) pour `trancher` et `gains`, sans E/S : l'égalité et la suppression du Bonus.
-- **Ce qu'il ne faut pas tester** : l'ordre interne des champs, ni le rendu exact de la page.
-- **La page n'a pas de test automatisé** (JavaScript natif, sans infrastructure de test, comme dans la spec UX). Elle se vérifie à la main, avec une checklist suivant les user stories : onglets, bouton d'Ouverture visible quel que soit l'onglet, attente d'Ouverture, prompt avant et après le lancement, auto-enregistrement des Commentaires (dont la clôture pendant la saisie), infobulles de référence (survol et toucher), liste des Co-animateurs, affichage sur téléphone.
-- **Prior art** : `test/api.test.js` (helpers `claude`, `animateur`, `rejoindre`), `test/arbitrage.test.js`.
+- **Main seam: the HTTP API** (`test/api.test.js`), with a server on a free port, a temporary folder and an imposed token. Each rule is tested through the requests of a Player, a Co-facilitator and the Facilitator:
+  - tie sent back out loud, re-ask, settled at the next closing, Scoreboard hidden during the Session, statistics at the end;
+  - continuous Numbers from one Step to the next, new Number for a re-asked Question and indication of the Question taken over;
+  - Opening: Questions absent from a Player's view while the Step is pending, Vote refused (409), Opening refused on an open or closed Step, result long-poll unchanged;
+  - prompt: visible to Players before the first Opening, absent after except for the Facilitator, modification refused (409) after, including with the token;
+  - results: the view contains the closed Steps, most recent first, with the Player's Vote;
+  - Co-facilitator: appointment and revocation (token only, refused otherwise), Opening and closing rights accepted for an appointed Co-facilitator and refused (403) for an ordinary Player, reserved actions refused (403) to the Co-facilitator, appointment kept after reloading the Session;
+  - live distribution: disabled by default, settable before the first Opening, half-of-voters threshold.
+- **Secondary seam: the pure Arbitration module** (`test/arbitration.test.js`) for `decide` and `gains`, with no I/O: the tie and the absence of a Bonus.
+- **What not to test**: the internal order of fields, nor the exact rendering of the page.
+- **The page has no automated test** (native JavaScript, no test infrastructure, as in the UX spec). It is checked by hand, with a checklist following the user stories: tabs, Opening button visible whichever tab, wait for Opening, prompt before and after the start, Comment auto-save (including closing during typing), reference tooltips (hover and touch), Co-facilitators list, display on a phone.
+- **Prior art**: `test/api.test.js` (helpers for Claude, the Facilitator and joining), `test/arbitration.test.js`.
 
 ## Out of Scope
 
-- Le secret de la reprise de pseudo (`improvements.md`), même s'il protège désormais aussi le droit de Co-animateur.
-- L'ETag du relevé périodique (`improvements.md`).
-- La mise en forme du Récapitulatif (contenu inchangé en dehors des statistiques, des Numéros et des partages).
-- Le transfert du rôle d'Animateur (jeton) à un autre Joueur, et la notification d'un Co-animateur désigné.
-- Un message « Claude réfléchit » envoyé par le skill.
-- Les tests automatisés de la page (navigateur ou module de vues).
+- The secret of nickname resumption (`improvements.md`), even though it now also protects the Co-facilitator right.
+- The ETag of the periodic poll (`improvements.md`).
+- The formatting of the Summary (content unchanged apart from the statistics, the Numbers and the splits).
+- Transferring the Facilitator role (token) to another Player, and notifying an appointed Co-facilitator.
+- An explicit "Claude is thinking" message sent by the skill.
+- Automated tests of the page (browser or views module).
 
 ## Further Notes
 
-- Q14 de la Séance de brainstorm est contestée (1-1, la recommandée a départagé, aucun Commentaire du Joueur qui a voté C). Elle doit être discutée à l'oral avant implémentation ; les tâches liées à la mise de côté restent **à confirmer** tant que ce n'est pas fait.
-- Les décisions Q5, Q7 et Q9 de la Séance de brainstorm ont été tranchées par la recommandée sur des répartitions 1-1. Elles sont remplacées par Q8, Q10 et Q11, qui ont été retenues à l'unanimité. Ne pas les reprendre.
-- Le Récapitulatif de la Séance, généré par le serveur, affiche Q5, Q7, Q9 et Q14 comme « recommandée », ce qui masque les partages. Une correction de ce rendu fait partie de la spec : tout partage doit y figurer.
-- Cette spec remplace, dans la spec UX (`docs/specs/grill-arena-ux.md`), les passages sur le message d'état « Claude prépare la suite », l'enregistrement du Commentaire à la sortie du champ et les Règles qui mentionnent le Bonus. À l'implémentation, mettre aussi à jour le README et la spec initiale (`docs/specs/grill-arena.md`) là où ils décrivent le Bonus, le prompt affiché pendant toute la Séance et la clôture sans Ouverture.
+- Q14 of the brainstorm Session is contested (1-1, the recommended option broke the tie, no Comment from the Player who voted C). It must be discussed out loud before implementation; the tasks related to setting aside remain **to confirm** until then.
+- Decisions Q5, Q7 and Q9 of the brainstorm Session were settled by the recommended option on 1-1 distributions. They are replaced by Q8, Q10 and Q11, which were selected unanimously. Do not take them over.
+- The Summary generated by the server shows every split as "to re-ask (split vote)" so that no split is hidden.
+- This spec supersedes, in the UX spec (`docs/specs/grill-arena-ux.md`), the passages on the "Claude is preparing the next Step" status message, on saving the Comment on leaving the field and on the Rules mentioning the Bonus. The README and the initial spec (`docs/specs/grill-arena.md`) must also match where they describe the Bonus, the prompt displayed throughout the Session and closing without Opening.

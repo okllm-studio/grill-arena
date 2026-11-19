@@ -1,0 +1,22 @@
+{
+  "name": "grill-arena",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Séance de grilling multijoueur : votes, Commentaires et Tableau des scores.",
+  "bin": {
+    "grill-arena": "src/main.js"
+  },
+  "scripts": {
+    "start": "node src/main.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "express": "^5.3.0",
+    "marked": "^15.0.12",
+    "qrcode-generator": "^1.5.2"
+  }
+}

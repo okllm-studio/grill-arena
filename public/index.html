@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Grill Arena</title>
+    <link rel="stylesheet" href="/style.css" />
+    <script src="/vendor/marked.js"></script>
+    <script src="/vendor/qrcode.js"></script>
+  </head>
+  <body>
+    <header class="entete">
+      <div>
+        <h1 id="titre">Grill Arena</h1>
+        <p id="avancement" class="avancement"></p>
+      </div>
+      <div class="boutons">
+        <button id="bouton-regles" class="secondaire" type="button" aria-expanded="false" aria-controls="regles">Règles</button>
+        <button id="bouton-tableau" class="secondaire" type="button" aria-expanded="false" aria-controls="tableau" hidden>Tableau des scores</button>
+      </div>
+    </header>
+
+    <!-- Pilotage collant : Ouverture et clôture restent accessibles en haut de page, quel que soit l'onglet. -->
+    <section id="pilotage" class="animateur pilotage" hidden></section>
+    <section id="regles" class="panneau" hidden></section>
+    <section id="tableau" class="panneau" hidden></section>
+    <nav id="onglets" class="onglets" role="tablist" aria-label="Sections" hidden></nav>
+    <main id="contenu"></main>
+    <section id="resultats" hidden></section>
+    <section id="animateur" class="animateur" hidden></section>
+
+    <p id="message" class="message" role="status" aria-live="polite"></p>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

@@ -1,5 +1,6 @@
 // Session: in-memory state of a multiplayer grilling (Players, Steps, Votes, Comments).
 import { randomUUID } from "node:crypto";
+import { t, plural } from "../public/i18n.js";
 import { decide, gains, consensusLevel, stepConsensus, DEFAULT_SCALE } from "./arbitration.js";
 
 /** Request refused by a rule of the Session; `httpStatus` is the HTTP code to return. */
@@ -273,27 +274,30 @@ export class Session {
     return this.summary();
   }
 
-  summary() {
-    const lines = [`# Summary: ${this.title}`, ""];
+  /** Summary as Markdown; its fixed skeleton comes from the translation catalogue. */
+  summary(lang = "en") {
+    const lines = [t("summary.title", { title: this.title }, lang), ""];
     for (const step of this.steps.filter((s) => s.state === "closed")) {
-      lines.push(`## Step ${step.number}`, "");
+      lines.push(t("summary.step", { number: step.number }, lang), "");
       for (const q of step.questions) {
         const outcome = step.outcomes[q.id];
-        const heading = `**Q${q.number} · ${q.title}**${q.reaskOf ? ` (re-asked from Q${this.question(q.reaskOf).number})` : ""}`;
+        const reasked = q.reaskOf ? ` ${t("summary.reaskedFrom", { number: this.question(q.reaskOf).number }, lang)}` : "";
+        const heading = t("summary.questionHeading", { number: q.number, title: q.title }, lang) + reasked;
         if (outcome.status === "to_reask") {
-          lines.push(`- ${heading}: to re-ask${outcome.split ? " (split vote)" : ""}`);
+          lines.push(`- ${heading}: ${t("summary.toReask", {}, lang)}${outcome.split ? ` ${t("summary.splitVote", {}, lang)}` : ""}`);
           continue;
         }
         const option = q.options.find((o) => o.id === outcome.selected);
         const label = `${option.id}. ${option.label}`;
-        const nature = outcome.selected === q.recommended ? "recommended" : "not recommended";
+        const nature = t(outcome.selected === q.recommended ? "summary.recommended" : "summary.notRecommended", {}, lang);
         lines.push(`- ${heading}: ${label} (${nature})`);
       }
       lines.push("");
     }
-    lines.push("## Scoreboard", "");
+    lines.push(t("summary.scoreboard", {}, lang), "");
     this.scoreboard().forEach((row, i) => {
-      lines.push(`${i + 1}. ${row.nickname}: ${row.total} (${plural(row.points, "Point")})`);
+      const points = plural(row.points, "noun.Point", lang);
+      lines.push(t("summary.scoreRow", { rank: i + 1, nickname: row.nickname, total: row.total, points }, lang));
     });
     return lines.join("\n") + "\n";
   }
@@ -420,8 +424,4 @@ function validateQuestions(questions) {
 function numberQuestions(questions, previousSteps) {
   const already = previousSteps.reduce((n, s) => n + s.questions.length, 0);
   return questions.map((q, i) => ({ ...q, number: already + i + 1 }));
-}
-
-function plural(n, word) {
-  return `${n} ${n === 1 ? word : word + "s"}`;
 }

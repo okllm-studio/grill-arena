@@ -113,7 +113,13 @@ const canControl = () => isFacilitator() || state?.coFacilitator === true;
 const heading = (q) =>
   `<span class="number">Q${q.number}</span>${escapeHtml(q.title ?? q.id)}${q.reaskOfNumber ? ` <small>(re-asked from Q${q.reaskOfNumber})</small>` : ""}`;
 
-const optionLabel = (q, id) => q.options.find((o) => o.id === id)?.label ?? id;
+/** Option text prefixed with its identifier (A, B, C…), so it matches the letters cited in the body. */
+const withLetter = (o) => `${o.id}. ${o.label}`;
+
+const optionLabel = (q, id) => {
+  const option = q.options.find((o) => o.id === id);
+  return option ? withLetter(option) : id;
+};
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
@@ -136,7 +142,7 @@ function tooltipContent(q) {
       : r.split
         ? "Split vote: to be settled verbally"
         : "To re-ask";
-  const distribution = q.options.map((o) => `${escapeHtml(o.label)}: ${r.distribution[o.id]}`).join(" · ");
+  const distribution = q.options.map((o) => `${escapeHtml(withLetter(o))}: ${r.distribution[o.id]}`).join(" · ");
   const vote = q.myVote ? `Your Vote: ${escapeHtml(optionLabel(q, q.myVote))}` : "You did not vote.";
   return `<strong>Q${q.number} · ${escapeHtml(q.title)}</strong><br>${escapeHtml(outcome)}<br>${distribution}<br>${vote}`;
 }
@@ -344,13 +350,13 @@ function questionCard(step, q) {
     .map(
       (o) => `<label class="option ${q.myVote === o.id ? "chosen" : ""}">
         <input type="radio" name="vote-${q.id}" data-question="${q.id}" value="${escapeHtml(o.id)}" ${q.myVote === o.id ? "checked" : ""} />
-        <span>${withReferences(escapeHtml(o.label))}${o.id === q.recommended ? '<span class="badge recommended">recommended</span>' : ""}</span>
+        <span>${withReferences(escapeHtml(withLetter(o)))}${o.id === q.recommended ? '<span class="badge recommended">recommended</span>' : ""}</span>
       </label>`,
     )
     .join("");
   const comment = drafts.get(q.id) ?? q.myComment;
   const distribution = q.distribution
-    ? `<p class="counter">Distribution: ${q.options.map((o) => `${escapeHtml(o.label)} ${q.distribution[o.id]}`).join(" · ")}</p>`
+    ? `<p class="counter">Distribution: ${q.options.map((o) => `${escapeHtml(withLetter(o))} ${q.distribution[o.id]}`).join(" · ")}</p>`
     : "";
   return `<article class="card">
     ${title}${body}
@@ -376,7 +382,7 @@ function questionResult(q) {
       const selected = r.status === "selected" && r.selected === o.id;
       return `<div class="bar ${selected ? "selected" : ""}">
         <div class="track"><div class="filled" style="width:${(n / total) * 100}%">
-          ${selected ? "✓ " : ""}${escapeHtml(o.label)}${o.id === q.recommended ? '<span class="badge recommended">recommended</span>' : ""}
+          ${selected ? "✓ " : ""}${escapeHtml(withLetter(o))}${o.id === q.recommended ? '<span class="badge recommended">recommended</span>' : ""}
         </div></div><span>${n}</span>
       </div>`;
     })

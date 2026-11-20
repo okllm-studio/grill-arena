@@ -401,16 +401,59 @@ function questionResult(q) {
 
 // --- "Results" tab ------------------------------------------------------------------------
 
-/** Results of a closed Step: Questions, distribution, Comments and the Player's Vote. */
+/** Texts of the folded results, gathered here to be extracted into a catalogue later. */
+const FOLD_TEXT = {
+  levels: { consensus: "Consensus", near_consensus: "Near-consensus", divided: "Divided", unassessed: "Not assessed" },
+  reask: "to re-ask",
+  abstentions: "abst.",
+  comments: "Comments",
+  consensualStep: "Consensual Step",
+  unanimous: (n, m) => `${plural(n, "Question")} out of ${m} unanimous`,
+};
+
+/** Questions (by number) the user has unfolded: kept across re-renders triggered by live updates. */
+const unfoldedQuestions = new Set();
+
+/** Banner of a closed Step, from the server's figures; none when no Question was assessed. */
+function consensusBanner(step) {
+  const c = step.consensus;
+  if (!c || !c.assessed) return "";
+  const consensual = c.consensual === true;
+  return `<p class="consensus-banner ${consensual ? "consensual" : "mixed"}" role="status">${escapeHtml(
+    consensual ? FOLD_TEXT.consensualStep : FOLD_TEXT.unanimous(c.atConsensus, c.assessed),
+  )}</p>`;
+}
+
+/** Folded line of a Question: level mark with its label, outcome, text distribution, Comment indicator. */
+function foldedSummary(q) {
+  const r = q.result;
+  const level = r.consensus ?? "unassessed";
+  const selected = r.status === "selected" ? q.options.find((o) => o.id === r.selected) : null;
+  const outcome = selected ? withLetter(selected) : FOLD_TEXT.reask;
+  const distribution = [
+    ...q.options.map((o) => `${o.id} ${r.distribution[o.id]}`),
+    `${FOLD_TEXT.abstentions} ${r.abstentions}`,
+  ].join(" · ");
+  const comments = r.comments.length
+    ? `<span class="fold-comments">${FOLD_TEXT.comments}: ${r.comments.length}</span>`
+    : "";
+  return `<summary><span class="level level-${level}">${escapeHtml(FOLD_TEXT.levels[level])}</span>
+    <span class="fold-title">${heading(q)}</span>
+    <span class="fold-outcome">${escapeHtml(outcome)}</span>
+    <span class="fold-distribution">${escapeHtml(distribution)}</span>${comments}</summary>`;
+}
+
+/** Results of a closed Step: Consensus banner, then Questions folded by default. */
 function resultsBlock(step) {
   const questions = step.questions
     .map((q) => {
       const myChoice = q.myVote ? optionLabel(q, q.myVote) : null;
       const vote = myChoice ? `Your Vote: ${escapeHtml(myChoice)}` : "You did not vote on this Question.";
-      return `<article class="question-result"><h3>${heading(q)}</h3>${questionResult(q)}<p class="counter">${vote}</p></article>`;
+      const open = unfoldedQuestions.has(q.number) ? "open" : "";
+      return `<details class="question-result" data-fold="${q.number}" ${open}>${foldedSummary(q)}${questionResult(q)}<p class="counter">${vote}</p></details>`;
     })
     .join("");
-  return `<section class="card"><h2>Results of Step ${step.number}</h2>${questions}</section>`;
+  return `<section class="card"><h2>Results of Step ${step.number}</h2>${consensusBanner(step)}${questions}</section>`;
 }
 
 function renderResults() {
@@ -750,6 +793,18 @@ function toggleReference(ref) {
   for (const other of document.querySelectorAll(".ref.open")) other.classList.remove("open");
   if (open) ref.classList.add("open");
 }
+
+// "toggle" does not bubble: capture it to remember which results the user has unfolded.
+document.addEventListener(
+  "toggle",
+  (ev) => {
+    const fold = ev.target.dataset?.fold;
+    if (fold === undefined) return;
+    if (ev.target.open) unfoldedQuestions.add(Number(fold));
+    else unfoldedQuestions.delete(Number(fold));
+  },
+  true,
+);
 
 document.addEventListener("click", async (ev) => {
   const target = ev.target instanceof Element ? ev.target : null;

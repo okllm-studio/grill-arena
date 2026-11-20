@@ -13,13 +13,20 @@ Each question comes with a recommended answer and a few mutually exclusive optio
 - **Some people are remote.** A [Cloudflare tunnel](https://developers.cloudflare.com/tunnel/) publishes the page under a temporary HTTPS URL, so colleagues who cannot be on site join the same session, with nothing to install and no account.
 - **Mixed.** All of the above at once: part of the group in the room, the rest online, and the discussion happening out loud or in a call.
 
-At the end of the session the group gets a summary of the decisions, the participation statistics and a Scoreboard, and Claude is left with a glossary, decision records and a working document to write the spec from (see [Origin and prerequisites](#origin-and-prerequisites)).
+At the end of the session the group gets a summary of the decisions, the participation statistics and a single Scoreboard (no podium), and Claude is left with a glossary, decision records and a working document to write the spec from (see [Origin and prerequisites](#origin-and-prerequisites)).
 
 ## Vocabulary
 
-The domain terms (Session, Step, Opening, Question, Option, Facilitator, Player, Vote, Comment…) are defined in [`GLOSSARY.md`](GLOSSARY.md).
+The domain terms (Session, Step, Opening, Question, Option, Consensus, Facilitator, Player, Vote, Comment…) are defined in [`GLOSSARY.md`](GLOSSARY.md).
 
-Specs are in [`docs/specs/`](docs/specs/).
+## Results, Consensus and language
+
+- **Options** are identified by consecutive capital letters (`A`, `B`, `C`…), shown before each Option on every control and cited by letter in the Questions and in the Summary.
+- **Closed Steps** show their Questions folded by default, one line each: a Consensus level (colour and text label), the Selected option, the distribution and the number of Comments. A click unfolds the detail.
+- **Consensus levels** are computed from the cast Votes only (Abstentions ignored): *Consensus* (every voter chose the same Option), *Near-consensus* (exactly one dissenting Vote) and *Divided* (anything else, including a split vote and a Question to re-ask). A Question with fewer than two voters is not assessed.
+- **Step banner**: above the results of a closed Step, "Consensual Step" when every assessed Question reached Consensus, otherwise "N Questions out of M unanimous". No banner when no Question is assessed.
+- **Scoreboard**: shown once, as a ranked list with no podium, to the Facilitator and Co-facilitators during the Session and to everyone once published or at the end.
+- **Interface language**: English or French, a setting of the Session shared by all pages. The Facilitator (or a Co-facilitator) switches it at any time from the Facilitator page (`PUT /api/session/language` with `{"language": "en"}` or `"fr"`; anything else is a 400); Players follow with their next refresh. The Summary is generated in that language.
 
 ## Origin and prerequisites
 
@@ -108,6 +115,7 @@ Change the port with `make tunnel PORT=…` and `make start PORT=… URL=…` (s
 | `GRILL_ARENA_PORT` | `4242` | Port the server listens on. |
 | `GRILL_ARENA_DIR` | `./sessions` | Folder where sessions are saved. |
 | `GRILL_ARENA_PUBLIC_URL` | (empty) | Public (tunnel) URL shown to players instead of local addresses. The Facilitator link stays local. |
+| `GRILL_LANG` | `en` | Interface language of new Sessions, `en` or `fr` (anything else means `en`). Can be changed during the Session. |
 
 ### Security
 

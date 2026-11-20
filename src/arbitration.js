@@ -20,6 +20,38 @@ export function decide(question, votes, { tiebreak, toReask = false, alreadyReas
   return { status: "tie", tiedOptions: leaders, distribution };
 }
 
+/**
+ * Consensus level of a decided Question, from the cast Votes only (Abstentions are ignored).
+ * Consensus: all voters chose the same Option. Near-consensus: exactly one Vote differs from the rest.
+ * Divided: any other spread, a Split vote and a Question to re-ask included.
+ * @returns {"consensus" | "near_consensus" | "divided" | undefined} undefined: not assessed (fewer than two voters)
+ */
+export function consensusLevel(outcome) {
+  const counts = Object.values(outcome.distribution);
+  const voters = counts.reduce((a, b) => a + b, 0);
+  if (voters < 2) return undefined;
+  if (outcome.status === "to_reask") return "divided";
+  const max = Math.max(...counts);
+  if (max === voters) return "consensus";
+  if (voters - max === 1 && max > 1) return "near_consensus";
+  return "divided";
+}
+
+/**
+ * Consensus figures of a Step: assessed Questions, those at Consensus, and the consensual flag
+ * (every assessed Question at Consensus). Without any assessed Question, there is no flag.
+ * @param {(string | undefined)[]} levels  the Questions' levels
+ */
+export function stepConsensus(levels) {
+  const assessed = levels.filter(Boolean);
+  const atConsensus = assessed.filter((l) => l === "consensus").length;
+  return {
+    assessed: assessed.length,
+    atConsensus,
+    ...(assessed.length > 0 && { consensual: atConsensus === assessed.length }),
+  };
+}
+
 export const DEFAULT_SCALE = Object.freeze({ point: 1 });
 
 /**

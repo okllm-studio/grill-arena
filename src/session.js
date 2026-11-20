@@ -1,6 +1,6 @@
 // Session: in-memory state of a multiplayer grilling (Players, Steps, Votes, Comments).
 import { randomUUID } from "node:crypto";
-import { decide, gains, DEFAULT_SCALE } from "./arbitration.js";
+import { decide, gains, consensusLevel, stepConsensus, DEFAULT_SCALE } from "./arbitration.js";
 
 /** Request refused by a rule of the Session; `httpStatus` is the HTTP code to return. */
 export class Refusal extends Error {
@@ -178,8 +178,14 @@ export class Session {
     return {
       step: { id: step.id, number: step.number },
       questions: step.questions.map((q) => this.questionResult(step, q)),
+      consensus: this.stepConsensus(step),
       scoreboard: this.scoreboard(),
     };
+  }
+
+  /** Consensus figures of a closed Step. */
+  stepConsensus(step) {
+    return stepConsensus(step.questions.map((q) => consensusLevel(step.outcomes[q.id])));
   }
 
   questionResult(step, question) {
@@ -191,6 +197,7 @@ export class Session {
       status: outcome.status,
       ...(outcome.status === "selected" && { selected: outcome.selected }),
       ...(outcome.split && { split: true }),
+      ...(consensusLevel(outcome) && { consensus: consensusLevel(outcome) }),
       distribution: outcome.distribution,
       abstentions: this.players.filter((p) => !(p.id in votes)).length,
       comments: this.players
@@ -345,6 +352,7 @@ export class Session {
         remaining: step.remaining,
         state: step.state,
         open: step.state === "open",
+        ...(step.state === "closed" && { consensus: this.stepConsensus(step) }),
         questions: (step.state === "pending" ? [] : step.questions).map((q) => {
           const voters = Object.keys(step.votes[q.id]).length;
           return {
@@ -372,6 +380,7 @@ export class Session {
         .map((s) => ({
           id: s.id,
           number: s.number,
+          consensus: this.stepConsensus(s),
           questions: s.questions.map((q) => ({
             id: q.id,
             number: q.number,

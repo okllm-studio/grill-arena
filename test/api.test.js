@@ -237,6 +237,7 @@ test("at closing, Claude receives the selected option, the distribution, the Com
       number: 1,
       status: "selected",
       selected: "B",
+      consensus: "near_consensus",
       distribution: { A: 1, B: 2 },
       abstentions: 1,
       comments: [{ nickname: "alice", text: "the monorepo is enough" }],
@@ -903,6 +904,100 @@ test("starting a new Session releases the requests waiting for a result", async 
   const released = await Promise.race([waiting, new Promise((resolve) => setTimeout(() => resolve("hung"), 1000))]);
   assert.notEqual(released, "hung");
   assert.equal(released.status, 409);
+});
+
+// --- Consensus levels ---------------------------------------------------------
+
+function optionQuestion(id, options = ["A", "B", "C"]) {
+  return { id, title: id, body: "", options: options.map((o) => ({ id: o, label: o })), recommended: options[0] };
+}
+
+/** Opens a Step with the given Questions, has Players vote (`votes[questionId]` = optionId per player), closes it. */
+async function closedStep(questionIds, votesByQuestion, { players = 4, decisions = {} } = {}) {
+  await claude.startSession();
+  const { body: step } = await claude.publishOpen({
+    number: 1,
+    settled: 0,
+    remaining: 4,
+    questions: questionIds.map((id) => optionQuestion(id)),
+  });
+  const joined = [];
+  for (let i = 0; i < players; i++) joined.push(await joinAs(`p${i}`));
+  for (const [qid, votes] of Object.entries(votesByQuestion)) {
+    for (const [i, option] of Object.entries(votes)) {
+      await joined[i].answer(step.id, qid, { option });
+    }
+  }
+  const before = await joined[0].state();
+  assert.equal(before.step.questions[0].result, undefined, "no level before closing");
+  assert.equal(before.step.consensus, undefined, "no Step figures before closing");
+  assert.equal((await facilitator.close(step.id, decisions)).status, 200);
+  const { body: result } = await claude.result(step.id);
+  return { step, result, view: await joined[0].state() };
+}
+
+const levels = (result) => result.questions.map((q) => q.consensus);
+
+test("a unanimous Question is at Consensus, one dissenting Vote is Near-consensus, any other spread is Divided", async () => {
+  const { result } = await closedStep(["q1", "q2", "q3"], {
+    q1: { 0: "A", 1: "A", 2: "A", 3: "A" },
+    q2: { 0: "A", 1: "A", 2: "A", 3: "B" },
+    q3: { 0: "A", 1: "A", 2: "B", 3: "B" },
+  }, { decisions: { tiebreaks: { q3: "A" } } });
+  assert.deepEqual(levels(result), ["consensus", "near_consensus", "divided"]);
+});
+
+test("a split vote and a Question to re-ask are Divided", async () => {
+  const { result } = await closedStep(["q1", "q2"], {
+    q1: { 0: "A", 1: "B" },
+    q2: { 0: "A", 1: "A", 2: "A" },
+  }, { decisions: { toReask: ["q2"] } });
+  assert.equal(result.questions[0].status, "to_reask");
+  assert.deepEqual(levels(result), ["divided", "divided"]);
+});
+
+test("Abstentions and unanswered Players do not change the level", async () => {
+  const { result } = await closedStep(["q1", "q2"], {
+    q1: { 0: "A", 1: "A", 2: null }, // 2 abstains explicitly, 3 never answers
+    q2: { 0: "A", 1: "A", 2: "A", 3: "B" },
+  });
+  assert.deepEqual(levels(result), ["consensus", "near_consensus"]);
+});
+
+test("a Question with 0 or 1 voter is not assessed", async () => {
+  const { result } = await closedStep(["q1", "q2"], { q2: { 0: "A" } });
+  assert.deepEqual(levels(result), [undefined, undefined]);
+});
+
+test("Step figures count only assessed Questions; a Near-consensus is not unanimous; the flag needs all of them at Consensus", async () => {
+  const mixed = await closedStep(["q1", "q2", "q3"], {
+    q1: { 0: "A", 1: "A" },
+    q2: { 0: "A", 1: "A", 2: "A", 3: "B" },
+  });
+  assert.deepEqual(mixed.result.consensus, { assessed: 2, atConsensus: 1, consensual: false });
+
+  const { result } = await closedStep(["q1", "q2", "q3"], {
+    q1: { 0: "A", 1: "A" },
+    q2: { 0: "B", 1: "B", 2: "B" },
+    q3: { 0: "C" },
+  });
+  assert.deepEqual(result.consensus, { assessed: 2, atConsensus: 2, consensual: true });
+});
+
+test("a Step with no assessed Question has no consensus status", async () => {
+  const { result } = await closedStep(["q1"], { q1: { 0: "A" } });
+  assert.deepEqual(result.consensus, { assessed: 0, atConsensus: 0 });
+});
+
+test("Players get the levels and Step figures in their views of closed Steps, same as Claude", async () => {
+  const { result, view } = await closedStep(["q1", "q2"], {
+    q1: { 0: "A", 1: "A", 2: "A" },
+    q2: { 0: "A", 1: "A", 2: "A", 3: "B" },
+  });
+  assert.deepEqual(view.step.questions.map((q) => q.result.consensus), levels(result));
+  assert.deepEqual(view.step.consensus, result.consensus);
+  assert.deepEqual(view.results[0].consensus, result.consensus);
+  assert.deepEqual(view.results[0].questions.map((q) => q.result.consensus), levels(result));
 });
 
 test("an Option with a non-letter identifier is accepted and shown as is in the Summary", async () => {

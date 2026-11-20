@@ -33,6 +33,7 @@ export function consensusLevel(outcome) {
   if (outcome.status === "to_reask") return "divided";
   const max = Math.max(...counts);
   if (max === voters) return "consensus";
+  // max > 1: the single dissent must stand against at least two Votes, so a 1-1 split is Divided.
   if (voters - max === 1 && max > 1) return "near_consensus";
   return "divided";
 }

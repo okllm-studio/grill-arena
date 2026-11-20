@@ -1126,3 +1126,13 @@ test("the Summary stays in English when the language is English", async () => {
   const { body } = await claude.end();
   assert.ok(body.summary.startsWith("# Summary: Arena"));
 });
+
+test("the shared catalogue is served to browsers and loads in Node without browser globals", async () => {
+  const response = await fetch(server.url + "/i18n.js");
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type"), /javascript/);
+  assert.ok((await response.text()).includes("export const catalogues"));
+  const { catalogues, t } = await import("../public/i18n.js");
+  assert.ok(Object.keys(catalogues).length >= 2);
+  assert.equal(typeof t("noun.abstention", {}, Object.keys(catalogues)[0]), "string");
+});

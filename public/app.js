@@ -96,6 +96,8 @@ async function refresh({ force = false } = {}) {
   const { data } = await api("GET", p ? `/api/state?player=${encodeURIComponent(p.id)}` : "/api/state");
   if (counter !== fetchCounter) return; // a more recent fetch was started in the meantime
   const serialized = JSON.stringify(data);
+  // Question numbers restart at Q1 in a new Session: forget which ones were unfolded.
+  if (data.session?.id !== state?.session?.id) unfoldedQuestions.clear();
   state = data;
   if (!force && serialized === lastState) return;
   lastState = serialized;

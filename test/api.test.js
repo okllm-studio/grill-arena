@@ -483,7 +483,7 @@ test("at the end of the Session, Claude receives the Summary and Players see the
   for (const expected of [
     "# Summary: Arena",
     "## Step 1",
-    "- **Q1 · Where does the tool live**: Folder in the monorepo (not recommended)",
+    "- **Q1 · Where does the tool live**: B. Folder in the monorepo (not recommended)",
     "## Step 2",
     "- **Q2 · Stack**: to re-ask",
     "## Scoreboard",
@@ -819,7 +819,7 @@ test("the Summary gives each Question's number and flags the Question that anoth
   const lines = body.summary.split("\n");
   assert.ok(lines.includes("- **Q1 · Where does the tool live**: to re-ask (split vote)"), body.summary);
   assert.ok(
-    lines.includes("- **Q2 · Where does the tool live** (re-asked from Q1): Dedicated repository (recommended)"),
+    lines.includes("- **Q2 · Where does the tool live** (re-asked from Q1): A. Dedicated repository (recommended)"),
     body.summary,
   );
 });
@@ -903,4 +903,22 @@ test("starting a new Session releases the requests waiting for a result", async 
   const released = await Promise.race([waiting, new Promise((resolve) => setTimeout(() => resolve("hung"), 1000))]);
   assert.notEqual(released, "hung");
   assert.equal(released.status, 409);
+});
+
+test("an Option with a non-letter identifier is accepted and shown as is in the Summary", async () => {
+  await claude.startSession("Arena");
+  const content = stepFixture(1);
+  content.questions[0].options = [
+    { id: "opt-1", label: "Dedicated repository" },
+    { id: "2", label: "Folder in the monorepo" },
+  ];
+  content.questions[0].recommended = "opt-1";
+  const { status, body: step } = await claude.publishOpen(content);
+  assert.equal(status, 201);
+  await facilitator.close(step.id);
+  const { body } = await claude.end();
+  assert.ok(
+    body.summary.split("\n").includes("- **Q1 · Where does the tool live**: opt-1. Dedicated repository (recommended)"),
+    body.summary,
+  );
 });

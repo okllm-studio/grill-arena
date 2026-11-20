@@ -146,6 +146,7 @@ export const catalogues = {
     "facilitator.publish": "Publish the statistics to Players",
     "facilitator.coFacilitators": "Co-facilitators",
     "facilitator.coFacilitatorHint": "A Co-facilitator can open and close Steps in your place. Be careful: anyone who takes back their nickname gets their rights.",
+    "facilitator.language": "Interface language",
     "facilitator.revoke": "Revoke",
     "facilitator.appoint": "Appoint",
 
@@ -162,6 +163,161 @@ export const catalogues = {
     "notify.closingRefused": "Closing refused",
     "notify.tie": "Tie: choose the selected Option, then close again.",
   },
+  fr: {
+    // --- Nouns with a singular and a plural form (see plural(): in French, 0 takes the singular) ---
+    "noun.Point.one": "{n} point",
+    "noun.Point.other": "{n} points",
+    "noun.Question.one": "{n} question",
+    "noun.Question.other": "{n} questions",
+    "noun.abstention.one": "{n} abstention",
+    "noun.abstention.other": "{n} abstentions",
+
+    // --- Summary (built by the server) ---
+    "summary.title": "# Synthèse : {title}",
+    "summary.step": "## Étape {number}",
+    "summary.questionHeading": "**Q{number} · {title}**",
+    "summary.reaskedFrom": "(reposée depuis Q{number})",
+    "summary.toReask": "à reposer",
+    "summary.splitVote": "(vote partagé)",
+    "summary.recommended": "recommandée",
+    "summary.notRecommended": "non recommandée",
+    "summary.scoreboard": "## Tableau des scores",
+    "summary.scoreRow": "{rank}. {nickname}: {total} ({points})",
+
+    // --- Page header, tabs, rules ---
+    "app.title": "Grill Arena",
+    "progress.ended": "Session terminée",
+    "progress.step": "Étape {number} · {settled} tranchées · ~{remaining} à venir",
+    "progress.waiting": "En attente de la première Étape",
+    "header.rules": "Règles",
+    "header.scoreboard": "Tableau des scores",
+    "tabs.label": "Sections",
+    "tab.current": "Étape en cours",
+    "tab.results": "Résultats",
+    "tab.resultsCount": "Résultats ({count})",
+    "tab.facilitator": "Animateur",
+    "rules.title": "Règles",
+    "rules.1": "Claude publie des Questions par Étapes. L’Animateur ouvre chaque Étape ; vous votez alors pour une Option par Question, ou vous vous abstenez.",
+    "rules.2": "Les Votes restent cachés jusqu’à la clôture de l’Étape ; vous pouvez modifier le vôtre jusque-là.",
+    "rules.3": "Un Commentaire est transmis à Claude et peut ouvrir de nouvelles Questions ; il ne compte pas comme un Vote.",
+    "rules.4": "L’Option retenue est celle qui a le plus de Votes. Sans aucun Vote, c’est l’Option recommandée. En cas de vote partagé, la Question est tranchée à l’oral et Claude la repose.",
+    "rules.5": "Vous gagnez 1 point si vous avez voté pour l’Option retenue. Le Tableau des scores et les statistiques de participation sont publiés à la fin de la Session.",
+    "rules.6": "Quand les Commentaires montrent qu’aucune Option ne convient, l’Animateur peut aussi reposer la Question dans l’Étape suivante.",
+
+    // --- Questions ---
+    "question.reaskedFrom": "(reposée depuis Q{number})",
+    "badge.recommended": "recommandée",
+    "badge.coFacilitator": "co-animateur",
+
+    // --- Tooltip of a reference to a closed Question ---
+    "tooltip.selected": "Retenue : {option}",
+    "tooltip.split": "Vote partagé : à trancher à l’oral",
+    "tooltip.toReask": "À reposer",
+    "tooltip.yourVote": "Votre Vote : {option}",
+    "tooltip.noVote": "Vous n’avez pas voté.",
+
+    // --- "Current Step" tab ---
+    "step.notStarted": "L’Animateur n’a pas encore démarré la Session. Cette page se mettra à jour toute seule.",
+    "step.initialPrompt": "Prompt initial",
+    "step.welcome": "Bienvenue {nickname}. Claude prépare la première Étape…",
+    "step.pending": "L’Animateur va ouvrir l’Étape {number} : vous pourrez alors voter.",
+    "join.title": "Rejoindre la Session",
+    "join.nickname": "Pseudo",
+    "join.button": "Rejoindre",
+    "join.taken": "Le pseudo « {nickname} » est déjà pris. Si c’était vous (autre navigateur, données effacées), vous pouvez le reprendre.",
+    "join.resume": "C’est moi, reprendre ce pseudo",
+    "status.closed": "Étape clôturée. Claude prépare la suite…",
+    "status.answeredAll": "Vous avez répondu à toutes les Questions. En attente de la clôture : vous pouvez encore modifier vos Votes.",
+    "status.vote": "Votez pour une Option par Question (ou abstenez-vous). Vous pouvez modifier votre Vote jusqu’à la clôture.",
+    "comment.unsaved": "Modifications non enregistrées",
+    "comment.saved": "✓ Enregistré",
+    "comment.stepClosed": "Étape clôturée avant l’envoi : copiez votre texte.",
+    "question.abstain": "S’abstenir",
+    "question.voted": "{voters}/{players} ont voté",
+    "question.distribution": "Répartition : {distribution}",
+    "question.commentLabel": "Commentaire (transmis à Claude, visible à la clôture)",
+    "question.voteSaved": "Vote enregistré, vous pouvez le modifier jusqu’à la clôture.",
+    "result.splitReask": "Vote partagé : à trancher à l’oral, Claude reposera cette Question.",
+    "result.reask": "À reposer : Claude reformulera cette Question.",
+
+    // --- "Results" tab ---
+    "fold.level.consensus": "Unanime",
+    "fold.level.near_consensus": "Quasi unanime",
+    "fold.level.divided": "Divisée",
+    "fold.level.unassessed": "Non évaluée",
+    "fold.reask": "à reposer",
+    "fold.abstentions": "abst.",
+    "fold.comments": "Commentaires",
+    "fold.consensualStep": "Étape consensuelle",
+    "fold.unanimous": "{questions} sur {total} unanimes",
+    "results.yourVote": "Votre Vote : {option}",
+    "results.noVote": "Vous n’avez pas voté sur cette Question.",
+    "results.title": "Résultats de l’Étape {number}",
+    "results.none": "Aucune Étape n’a encore été clôturée.",
+
+    // --- Scoreboard and end of Session ---
+    "scoreboard.title": "Tableau des scores",
+    "scoreboard.me": "(moi)",
+    "scoreboard.player": "Joueur",
+    "scoreboard.points": "Points",
+    "scoreboard.step": "Étape",
+    "scoreboard.votes": "Votes",
+    "scoreboard.comments": "Commentaires",
+    "scoreboard.abstentions": "Abstentions",
+    "end.title": "Fin de la Session",
+
+    // --- Controls (Opening and closing) ---
+    "controls.show": "Afficher",
+    "controls.fold": "Replier",
+    "controls.ready": "Étape {number} prête",
+    "controls.readyHint": "Claude a publié l’Étape. Les Joueurs ne voient pas encore ses Questions : ouvrez-la quand le groupe est prêt{locked}.",
+    "controls.readyLocked": " (le Prompt initial et la répartition en direct seront alors verrouillés)",
+    "controls.open": "Ouvrir l’Étape {number}",
+    "controls.closing": "Clôture de l’Étape {number}",
+    "controls.reaskLabel": "{heading} ({voters}/{players} ont voté) : aucune Option ne convient, la reposer",
+    "controls.tiebreak": "Départager « {heading} »",
+    "controls.closingHint": "Ne cochez que les Questions où aucune Option ne convient ; les autres sont tranchées par les Votes (un vote partagé se tranche à l’oral). Normalement, ne cochez rien.",
+    "controls.close": "Clôturer l’Étape",
+
+    // --- "Facilitator" tab ---
+    "next.label": "Prochaine action :",
+    "next.start": "Lancez la compétence <code>/grilling-arena</code> dans Claude Code pour démarrer la Session.",
+    "next.ended": "Session terminée. La Synthèse est dans l’onglet « Étape en cours » ; arrêtez le serveur avec Ctrl+C.",
+    "next.waitFirst": "Attendez que Claude publie la première Étape.",
+    "next.open": "Ouvrez l’Étape {number} (commande en haut de la page) quand le groupe est prêt.",
+    "next.close": "Clôturez l’Étape (commandes en haut de la page) quand tout le monde a voté.",
+    "next.preparing": "Claude prépare la suite : l’Étape suivante, ou la fin de la Session.",
+    "facilitator.invalidToken": "Jeton d’Animateur invalide. Ouvrez le lien « Facilitator » affiché dans le terminal où tourne le serveur (<code>make start</code>), ou lisez-le dans <code>sessions/.token</code>.",
+    "facilitator.title": "Animateur",
+    "facilitator.access": "Accès des Joueurs",
+    "facilitator.promptLocked": "Verrouillé depuis l’Ouverture de l’Étape 1.",
+    "facilitator.promptHint": "Visible de tous les Joueurs jusqu’à l’Ouverture de l’Étape 1 ; Markdown. Sert de point de départ au grilling.",
+    "facilitator.savePrompt": "Enregistrer le prompt",
+    "facilitator.distribution": "Répartition des Votes",
+    "facilitator.liveDistribution": "Afficher la répartition en direct, dès que la moitié des Joueurs ont voté{locked}",
+    "facilitator.liveLocked": " (verrouillé depuis l’Ouverture de l’Étape 1)",
+    "facilitator.language": "Langue de l’interface",
+    "facilitator.publication": "Tableau des scores et statistiques",
+    "facilitator.published": "Statistiques publiées",
+    "facilitator.publish": "Publier les statistiques aux Joueurs",
+    "facilitator.coFacilitators": "Co-animateurs",
+    "facilitator.coFacilitatorHint": "Un Co-animateur peut ouvrir et clôturer les Étapes à votre place. Attention : toute personne qui reprend son pseudo récupère ses droits.",
+    "facilitator.revoke": "Révoquer",
+    "facilitator.appoint": "Nommer",
+
+    // --- Notifications ---
+    "notify.promptRefused": "Prompt refusé",
+    "notify.promptSaved": "Prompt enregistré",
+    "notify.answerRefused": "Réponse refusée",
+    "notify.joinFailed": "Impossible de rejoindre",
+    "notify.settingRefused": "Réglage refusé",
+    "notify.appointmentRefused": "Nomination refusée",
+    "notify.publicationRefused": "Publication refusée",
+    "notify.statisticsPublished": "Statistiques publiées",
+    "notify.openingRefused": "Ouverture refusée",
+    "notify.closingRefused": "Clôture refusée",
+    "notify.tie": "Égalité : choisissez l’Option retenue, puis clôturez à nouveau.",
+  },
 };
 
 /** Text of `key` in `lang`, `{placeholders}` filled from `params`. Falls back to English, then to the key itself. */
@@ -172,7 +328,8 @@ export function t(key, params = {}, lang = DEFAULT_LANGUAGE) {
 
 /** "1 Point", "2 Points": `noun` is a key prefix with `.one` and `.other` forms. */
 export function plural(n, noun, lang = DEFAULT_LANGUAGE) {
-  return t(`${noun}.${n === 1 ? "one" : "other"}`, { n }, lang);
+  const singular = lang === "fr" ? n === 0 || n === 1 : n === 1;
+  return t(`${noun}.${singular ? "one" : "other"}`, { n }, lang);
 }
 
 /** `t` and `plural` bound to a language, for a caller that renders everything in one language. */

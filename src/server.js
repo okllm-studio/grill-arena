@@ -13,11 +13,12 @@ const clientFiles = {
 };
 
 /**
- * @param {{port: number, dir: string, token: string, host?: string, playerUrls?: string[]}} options
+ * @param {{port: number, dir: string, token: string, host?: string, playerUrls?: string[], language?: string}} options
  *   `playerUrls`: addresses to show (and as a QR code) on the Facilitator's page.
+ *   `language`: initial language of new Sessions (an unsupported value means English).
  * @returns {Promise<{url: string, port: number, close: () => Promise<void>}>}
  */
-export async function start({ port, dir, token, host = "0.0.0.0", playerUrls = [] }) {
+export async function start({ port, dir, token, host = "0.0.0.0", playerUrls = [], language }) {
   const storage = createStorage(dir);
   const inProgress = storage.lastInProgress();
   let session = inProgress && Session.restore(inProgress);
@@ -85,7 +86,7 @@ export async function start({ port, dir, token, host = "0.0.0.0", playerUrls = [
       pending.status(409).json({ error: "Session replaced" });
     }
     waiting.clear();
-    session = new Session({ title: req.body.title, prompt: req.body.prompt ?? "", startedAt });
+    session = new Session({ title: req.body.title, prompt: req.body.prompt ?? "", startedAt, language });
     res.status(201).json({ id: session.id });
   });
 
@@ -97,6 +98,11 @@ export async function start({ port, dir, token, host = "0.0.0.0", playerUrls = [
   app.put("/api/session/live-distribution", facilitatorOnly, (req, res) => {
     activeSession().configure({ liveDistribution: req.body.enabled });
     res.json({ enabled: activeSession().liveDistribution });
+  });
+
+  app.put("/api/session/language", facilitatorOrCoFacilitator, (req, res) => {
+    activeSession().setLanguage(req.body.language);
+    res.json({ language: activeSession().language });
   });
 
   app.put("/api/session/co-facilitators/:playerId", facilitatorOnly, (req, res) => {

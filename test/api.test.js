@@ -1044,3 +1044,85 @@ test("the full Summary text is pinned: skeleton, outcomes, re-asks and Scoreboar
     ].join("\n"),
   );
 });
+
+// --- Interface language ------------------------------------------------------
+
+const setLanguage = (language, { token = TOKEN, player } = {}) =>
+  request("PUT", "/api/session/language", { body: { language, ...(player && { player }) }, token });
+
+async function restartWith(options = {}) {
+  await server.close();
+  server = await start({ port: 0, dir, token: TOKEN, ...options });
+}
+
+test("a new Session starts in English, and the language is in the state seen by Players", async () => {
+  await claude.startSession();
+  const alice = await joinAs("alice");
+  assert.equal((await alice.state()).session.language, "en");
+});
+
+test("GRILL_LANG sets the initial language; an unsupported value falls back to English without failing", async () => {
+  await restartWith({ language: "fr" });
+  await claude.startSession();
+  assert.equal((await request("GET", "/api/state")).body.session.language, "fr");
+
+  await restartWith({ language: "de" });
+  await claude.startSession();
+  assert.equal((await request("GET", "/api/state")).body.session.language, "en");
+});
+
+test("the Facilitator changes the language before and after the Opening of Step 1, but only to a supported one", async () => {
+  await claude.startSession();
+  const alice = await joinAs("alice");
+  assert.equal((await setLanguage("fr")).status, 200);
+  assert.equal((await alice.state()).session.language, "fr");
+
+  await claude.publishOpen(stepFixture());
+  assert.equal((await setLanguage("en")).status, 200, "never locked");
+  assert.equal((await alice.state()).session.language, "en");
+
+  assert.equal((await setLanguage("de")).status, 400);
+  assert.equal((await alice.state()).session.language, "en");
+  assert.equal((await setLanguage("fr", { token: null })).status, 401);
+});
+
+test("a Co-facilitator changes the language, a Player is refused", async () => {
+  await claude.startSession();
+  const alice = await joinAs("alice");
+  const bob = await joinAs("bob");
+  await appoint(bob.id);
+  assert.equal((await setLanguage("fr", { token: null, player: alice.id })).status, 403);
+  assert.equal((await alice.state()).session.language, "en");
+  assert.equal((await setLanguage("fr", { token: null, player: bob.id })).status, 200);
+  assert.equal((await alice.state()).session.language, "fr");
+});
+
+test("the language survives a server restart", async () => {
+  await claude.startSession();
+  await setLanguage("fr");
+  await restartWith();
+  assert.equal((await request("GET", "/api/state")).body.session.language, "fr");
+});
+
+test("the Summary is generated in the Session language, on the end page and in Claude's result", async () => {
+  await claude.startSession("Arena");
+  const alice = await joinAs("alice");
+  const { body: step } = await claude.publishOpen(stepFixture());
+  await alice.answer(step.id, "q1", { option: "B" });
+  await facilitator.close(step.id);
+  await setLanguage("fr");
+
+  const { body } = await claude.end();
+  const lines = body.summary.split("\n");
+  for (const expected of ["# Synthèse\u00a0: Arena", "## Étape 1", "## Tableau des scores", "1. alice: 1 (1 point)"]) {
+    assert.ok(lines.includes(expected), `missing line: ${expected}\n${body.summary}`);
+  }
+  assert.ok(lines.some((l) => l.includes("Folder in the monorepo") && l.includes("non recommandée")), body.summary);
+  assert.equal((await alice.state()).session.summary, body.summary);
+});
+
+test("the Summary stays in English when the language is English", async () => {
+  await claude.startSession("Arena");
+  const { body } = await claude.end();
+  assert.ok(body.summary.startsWith("# Summary: Arena"));
+});

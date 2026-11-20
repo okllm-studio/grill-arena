@@ -1,6 +1,6 @@
 // Session: in-memory state of a multiplayer grilling (Players, Steps, Votes, Comments).
 import { randomUUID } from "node:crypto";
-import { t, plural } from "../public/i18n.js";
+import { t, plural, DEFAULT_LANGUAGE, catalogues } from "../public/i18n.js";
 import { decide, gains, consensusLevel, stepConsensus, DEFAULT_SCALE } from "./arbitration.js";
 
 /** Request refused by a rule of the Session; `httpStatus` is the HTTP code to return. */
@@ -12,8 +12,10 @@ export class Refusal extends Error {
   }
 }
 
+const isSupportedLanguage = (language) => typeof language === "string" && Object.hasOwn(catalogues, language);
+
 export class Session {
-  constructor({ title, prompt = "", scale = DEFAULT_SCALE, startedAt = Date.now() }) {
+  constructor({ title, prompt = "", scale = DEFAULT_SCALE, startedAt = Date.now(), language }) {
     this.id = randomUUID();
     this.startedAt = startedAt;
     this.scale = scale;
@@ -28,6 +30,8 @@ export class Session {
     this.liveDistribution = false;
     /** Ids of the Players the Facilitator appointed to open and close Steps in their place. */
     this.coFacilitators = [];
+    /** Interface language of the Session, never locked; an unsupported initial value falls back to English. */
+    this.language = isSupportedLanguage(language) ? language : DEFAULT_LANGUAGE;
   }
 
   /** `resume`: a nickname already taken returns its Player instead of being refused. Returns `{player, created}`. */
@@ -53,6 +57,12 @@ export class Session {
   configure({ liveDistribution }) {
     if (this.promptLocked) throw new Refusal(409, "Setting locked: Step 1 is open");
     this.liveDistribution = liveDistribution === true;
+  }
+
+  /** Changes the interface language; unlike the other settings, it is never locked. */
+  setLanguage(language) {
+    if (!isSupportedLanguage(language)) throw new Refusal(400, "Unsupported language");
+    this.language = language;
   }
 
   /** Replaces the initial prompt, shown to Players until it is locked. */
@@ -271,11 +281,11 @@ export class Session {
   end() {
     if (this.currentStep && this.currentStep.state !== "closed") throw new Refusal(409, "A Step is not closed");
     this.ended = true;
-    return this.summary();
+    return this.summary(this.language);
   }
 
   /** Summary as Markdown; its fixed skeleton comes from the translation catalogue. */
-  summary(lang = "en") {
+  summary(lang = DEFAULT_LANGUAGE) {
     const lines = [t("summary.title", { title: this.title }, lang), ""];
     for (const step of this.steps.filter((s) => s.state === "closed")) {
       lines.push(t("summary.step", { number: step.number }, lang), "");
@@ -318,8 +328,8 @@ export class Session {
 
   /** Complete state, for Storage. */
   toJSON() {
-    const { id, title, prompt, startedAt, scale, players, steps, ended, statisticsPublished, liveDistribution, coFacilitators } = this;
-    return { id, title, prompt, startedAt, scale, players, steps, ended, statisticsPublished, liveDistribution, coFacilitators };
+    const { id, title, prompt, startedAt, scale, players, steps, ended, statisticsPublished, liveDistribution, coFacilitators, language } = this;
+    return { id, title, prompt, startedAt, scale, players, steps, ended, statisticsPublished, liveDistribution, coFacilitators, language };
   }
 
   static restore(data) {
@@ -336,9 +346,10 @@ export class Session {
         ...((!this.promptLocked || facilitator) && { prompt: this.prompt ?? "" }),
         promptLocked: this.promptLocked,
         liveDistribution: this.liveDistribution === true,
+        language: isSupportedLanguage(this.language) ? this.language : DEFAULT_LANGUAGE,
         statisticsPublished: this.statisticsPublished === true,
         ended: this.ended,
-        ...(this.ended && { summary: this.summary() }),
+        ...(this.ended && { summary: this.summary(this.language) }),
       },
       players: this.players.length,
       coFacilitator: this.isCoFacilitator(playerId),

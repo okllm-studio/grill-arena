@@ -79,6 +79,8 @@ input, textarea, select {
 .facilitator { border-color: var(--accent); }
 .controls { position: sticky; top: 0; z-index: 5; max-height: 45vh; overflow-y: auto; box-shadow: 0 2px 8px rgb(0 0 0 / 12%); }
 .controls h2 { margin-bottom: 4px; }
+.controls .header-bar { flex-direction: row; align-items: center; margin-bottom: 4px; }
+.controls .header-bar h2 { margin: 0; }
 .number { display: inline-block; font-size: 0.8rem; font-weight: 700; color: var(--accent); background: var(--accent-soft); border-radius: 6px; padding: 0 6px; margin-right: 4px; vertical-align: middle; }
 .question-result { border-top: 1px solid var(--border); margin-top: 12px; padding-top: 8px; }
 .question-result h3 { font-size: 1rem; margin: 0 0 4px; }

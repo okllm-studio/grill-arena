@@ -461,6 +461,14 @@ function podium() {
 
 // --- Controls: Opening and closing (Facilitator and Co-facilitators) -----------------------
 
+/** The Facilitator can fold the controls panel to free the screen; the action button stays visible. */
+let controlsFolded = false;
+
+function controlsHeader(title) {
+  return `<div class="header-bar"><h2>${title}</h2>
+    <button type="button" class="secondary" id="toggle-controls" aria-expanded="${!controlsFolded}">${controlsFolded ? "Show" : "Fold"}</button></div>`;
+}
+
 function renderControls() {
   const controls = el("controls");
   const s = state?.step;
@@ -471,8 +479,8 @@ function renderControls() {
   }
   if (s.state === "pending") {
     controls.hidden = false;
-    controls.innerHTML = `<h2>Step ${s.number} ready</h2>
-      <p class="counter">Claude has published the Step. Players cannot see its Questions yet: open it when the group is ready${s.number === 1 ? " (the Initial prompt and the live distribution will then be locked)" : ""}.</p>
+    controls.innerHTML = `${controlsHeader(`Step ${s.number} ready`)}
+      <p class="counter" ${controlsFolded ? "hidden" : ""}>Claude has published the Step. Players cannot see its Questions yet: open it when the group is ready${s.number === 1 ? " (the Initial prompt and the live distribution will then be locked)" : ""}.</p>
       <div class="actions"><button type="button" id="open-step">Open Step ${s.number}</button></div>`;
     return;
   }
@@ -496,9 +504,10 @@ function renderControls() {
     })
     .join("");
   controls.hidden = false;
-  controls.innerHTML = `<h2>Closing of Step ${s.number}</h2>
+  controls.innerHTML = `${controlsHeader(`Closing of Step ${s.number}`)}
+    <div ${controlsFolded ? "hidden" : ""}>
     <p class="counter">Only tick the Questions where no Option fits; the others are settled by the Votes (a split vote is settled verbally). Normally, tick nothing.</p>
-    <div>${reask}</div>${tiebreaks}
+    <div>${reask}</div>${tiebreaks}</div>
     <div class="actions"><button type="button" id="close-step">Close the Step</button></div>`;
   for (const c of controls.querySelectorAll("[data-reask]")) c.checked = checked.has(c.dataset.reask);
   for (const x of controls.querySelectorAll("[data-tiebreak]")) if (choices[x.dataset.tiebreak]) x.value = choices[x.dataset.tiebreak];
@@ -748,6 +757,10 @@ document.addEventListener("click", async (ev) => {
   if (d.abstain) {
     await answer(d.abstain, { option: null });
     return refresh({ force: true });
+  }
+  if (target.id === "toggle-controls") {
+    controlsFolded = !controlsFolded;
+    return renderControls();
   }
   if (d.resume !== undefined) return join(true);
   if (d.cofacilitator) {

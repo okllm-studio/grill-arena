@@ -1114,7 +1114,7 @@ test("the Summary is generated in the Session language, on the end page and in C
 
   const { body } = await claude.end();
   const lines = body.summary.split("\n");
-  for (const expected of ["# Synthèse\u00a0: Arena", "## Étape 1", "## Tableau des scores", "1. alice: 1 (1 point)"]) {
+  for (const expected of ["# Synthèse : Arena", "## Étape 1", "## Tableau des scores", "1. alice: 1 (1 point)"]) {
     assert.ok(lines.includes(expected), `missing line: ${expected}\n${body.summary}`);
   }
   assert.ok(lines.some((l) => l.includes("Folder in the monorepo") && l.includes("non recommandée")), body.summary);

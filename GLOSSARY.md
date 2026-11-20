@@ -49,6 +49,13 @@ A tie between Options on a Question. It is not settled by the Recommended option
 **Re-asked question**:
 A Question published by naming the Question to re-ask it takes over (`reaskOf`). A tie on a Re-asked question is not re-asked a second time: the Facilitator breaks it. A Question is taken over only once, and a Re-asked question can no longer be re-asked.
 
+**Consensus**:
+The state of a closed Question on which every voter chose the same Option. Abstentions are ignored, and a Question with fewer than two voters has no Consensus status at all (it is not assessed). Two other levels exist: **Near-consensus** (exactly one dissenting Vote against a majority of at least two, so a 1 against 1 is Divided) and **Divided** (anything else, including a Split vote and a Question to re-ask).
+_Avoid_: agreement, unanimity
+
+**Consensual Step**:
+A closed Step in which every assessed Question reached Consensus. A Step with no assessed Question is neither consensual nor not.
+
 **Summary**:
 The list of the Selected options of a Session, which feeds the spec.
 
@@ -70,7 +77,7 @@ _Avoid_: deputy, moderator
 A Player's choice of an Option for a Question; it stays hidden until the Step closes.
 
 **Abstention**:
-A Player's absence of Vote on a Question; it earns nothing and costs nothing.
+A Player's choice not to Vote on a Question because they feel poorly placed to answer and would only bias the result; it earns nothing and costs nothing. A Player who has not answered when the Step closes counts as abstaining.
 
 **Comment**:
 A free text a Player adds to a Question; it is passed on to Claude and does not count as a Vote.

@@ -284,7 +284,8 @@ export class Session {
           lines.push(`- ${heading}: to re-ask${outcome.split ? " (split vote)" : ""}`);
           continue;
         }
-        const label = q.options.find((o) => o.id === outcome.selected).label;
+        const option = q.options.find((o) => o.id === outcome.selected);
+        const label = `${option.id}. ${option.label}`;
         const nature = outcome.selected === q.recommended ? "recommended" : "not recommended";
         lines.push(`- ${heading}: ${label} (${nature})`);
       }

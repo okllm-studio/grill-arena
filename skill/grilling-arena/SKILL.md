@@ -41,7 +41,7 @@ All the requests below carry `authorization: Bearer <token>` and `content-type: 
                    "options": [{"id": "A", "label": "…"}, {"id": "B", "label": "…"}],
                    "recommended": "A"}]}
    ```
-   - Closed, short and mutually exclusive Options; exactly one recommended. The reasoning and the justification of the recommendation go in `body`.
+   - Closed, short and mutually exclusive Options; exactly one recommended. Identify them with consecutive capital letters starting at `A` (`A`, `B`, `C`…): the page shows the letter before each Option, and the `body` must cite the Options by these letters ("Option B"). The reasoning and the justification of the recommendation go in `body`.
    - `settled`: Questions already settled in the Session; `remaining`: an honest estimate of what remains in the tree.
    - Question identifiers are unique across the Session (`q1`, `q2`…). A re-asked Question takes a new identifier and carries `"reaskOf": "<identifier of the Question taken over>"` (a Question to re-ask of a closed Step, otherwise 400): the Summary and the page display "re-asked from Qn", and a tie on a Re-asked question is no longer re-asked but broken by the Facilitator; a Question to re-ask is taken over only once, and a Re-asked question can no longer be re-asked (closing is refused with 409).
    - A 400 answer describes the malformed Step: fix and republish.

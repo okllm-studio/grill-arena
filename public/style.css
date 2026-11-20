@@ -118,10 +118,6 @@ th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--bord
 td.num, th.num { text-align: right; }
 .gain { color: var(--success); font-weight: 600; }
 
-.podium { display: flex; justify-content: center; align-items: flex-end; gap: 12px; margin: 24px 0; }
-.place { text-align: center; background: var(--accent-soft); border-radius: var(--radius) var(--radius) 0 0; padding: 12px; min-width: 90px; }
-.place.p1 { height: 160px; } .place.p2 { height: 120px; } .place.p3 { height: 90px; }
-.place strong { display: block; font-size: 1.1rem; }
 
 .message { position: fixed; bottom: var(--space); left: var(--space); right: var(--space); text-align: center; margin: 0; }
 .message:not(:empty) { background: var(--text); color: var(--bg); border-radius: 8px; padding: 8px; }

@@ -113,7 +113,13 @@ const canControl = () => isFacilitator() || state?.coFacilitator === true;
 const heading = (q) =>
   `<span class="number">Q${q.number}</span>${escapeHtml(q.title ?? q.id)}${q.reaskOfNumber ? ` <small>(re-asked from Q${q.reaskOfNumber})</small>` : ""}`;
 
-const optionLabel = (q, id) => q.options.find((o) => o.id === id)?.label ?? id;
+/** Option text prefixed with its identifier (A, B, C…), so it matches the letters cited in the body. */
+const withLetter = (o) => `${o.id}. ${o.label}`;
+
+const optionLabel = (q, id) => {
+  const option = q.options.find((o) => o.id === id);
+  return option ? withLetter(option) : id;
+};
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
@@ -136,7 +142,7 @@ function tooltipContent(q) {
       : r.split
         ? "Split vote: to be settled verbally"
         : "To re-ask";
-  const distribution = q.options.map((o) => `${escapeHtml(o.label)}: ${r.distribution[o.id]}`).join(" · ");
+  const distribution = q.options.map((o) => `${escapeHtml(withLetter(o))}: ${r.distribution[o.id]}`).join(" · ");
   const vote = q.myVote ? `Your Vote: ${escapeHtml(optionLabel(q, q.myVote))}` : "You did not vote.";
   return `<strong>Q${q.number} · ${escapeHtml(q.title)}</strong><br>${escapeHtml(outcome)}<br>${distribution}<br>${vote}`;
 }
@@ -263,7 +269,7 @@ function renderStep() {
       : "";
 
   if (session.ended) {
-    el("content").innerHTML = podium();
+    el("content").innerHTML = endCard();
   } else if (!player()) {
     el("content").innerHTML = prompt + joinForm();
   } else if (!s) {
@@ -344,13 +350,13 @@ function questionCard(step, q) {
     .map(
       (o) => `<label class="option ${q.myVote === o.id ? "chosen" : ""}">
         <input type="radio" name="vote-${q.id}" data-question="${q.id}" value="${escapeHtml(o.id)}" ${q.myVote === o.id ? "checked" : ""} />
-        <span>${withReferences(escapeHtml(o.label))}${o.id === q.recommended ? '<span class="badge recommended">recommended</span>' : ""}</span>
+        <span>${withReferences(escapeHtml(withLetter(o)))}${o.id === q.recommended ? '<span class="badge recommended">recommended</span>' : ""}</span>
       </label>`,
     )
     .join("");
   const comment = drafts.get(q.id) ?? q.myComment;
   const distribution = q.distribution
-    ? `<p class="counter">Distribution: ${q.options.map((o) => `${escapeHtml(o.label)} ${q.distribution[o.id]}`).join(" · ")}</p>`
+    ? `<p class="counter">Distribution: ${q.options.map((o) => `${escapeHtml(withLetter(o))} ${q.distribution[o.id]}`).join(" · ")}</p>`
     : "";
   return `<article class="card">
     ${title}${body}
@@ -376,7 +382,7 @@ function questionResult(q) {
       const selected = r.status === "selected" && r.selected === o.id;
       return `<div class="bar ${selected ? "selected" : ""}">
         <div class="track"><div class="filled" style="width:${(n / total) * 100}%">
-          ${selected ? "✓ " : ""}${escapeHtml(o.label)}${o.id === q.recommended ? '<span class="badge recommended">recommended</span>' : ""}
+          ${selected ? "✓ " : ""}${escapeHtml(withLetter(o))}${o.id === q.recommended ? '<span class="badge recommended">recommended</span>' : ""}
         </div></div><span>${n}</span>
       </div>`;
     })
@@ -418,10 +424,11 @@ function renderResults() {
     : `<div class="card">No Step has been closed yet.</div>`;
 }
 
-// --- Scoreboard, statistics, podium ----------------------------------------------------
+// --- Scoreboard and statistics ----------------------------------------------------
 
 function renderScoreboard() {
-  const available = Boolean(state?.scoreboard);
+  // Once the Session has ended, the end-of-Session card shows the Scoreboard: no button, no panel.
+  const available = Boolean(state?.scoreboard) && !state.session?.ended;
   el("scoreboard-button").hidden = !available;
   const visible = available && scoreboardOpen;
   el("scoreboard").hidden = !visible;
@@ -448,14 +455,10 @@ function scoreboardHtml() {
     <th class="num">Votes</th><th class="num">Comments</th><th class="num">Abstentions</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
-function podium() {
-  const [p1, p2, p3] = state.scoreboard ?? [];
-  const suffix = { 1: "st", 2: "nd", 3: "rd" };
-  const place = (l, rank) =>
-    l ? `<div class="place p${rank}"><strong>${escapeHtml(l.nickname)}</strong>${plural(l.total, "pt")}<br />${rank}${suffix[rank]}</div>` : "";
+/** End-of-Session card: the Scoreboard (only if the server sent it, i.e. published) shown once, then the Summary. */
+function endCard() {
   return `<div class="card"><h2>End of the Session</h2>
-    <div class="podium">${place(p2, 2)}${place(p1, 1)}${place(p3, 3)}</div>
-    <div class="scroll">${state.scoreboard ? scoreboardHtml() : ""}</div></div>
+    ${state.scoreboard ? scoreboardHtml() : ""}</div>
     ${state.session.summary ? `<article class="card body-text">${marked.parse(state.session.summary)}</article>` : ""}`;
 }
 
@@ -573,10 +576,13 @@ function renderFacilitator() {
     const setting = `<h3>Vote distribution</h3>
       <label><input type="checkbox" id="live-distribution" style="width:auto" ${session.liveDistribution ? "checked" : ""} ${locked ? "disabled" : ""} />
         Show the live distribution, once half of the Players have voted${locked ? " (locked since the Opening of Step 1)" : ""}</label>`;
-    const publication = `<h3>Scoreboard and statistics</h3>
+    // Once the Session has ended, the end-of-Session page carries the Scoreboard: no block here.
+    const publication = session.ended
+      ? ""
+      : `<h3>Scoreboard and statistics</h3>
       ${state.scoreboard ? scoreboardHtml() : ""}
-      <div class="actions"><button type="button" id="publish-stats" ${session.statisticsPublished || session.ended ? "disabled" : ""}>
-        ${session.statisticsPublished || session.ended ? "Statistics published" : "Publish the statistics to Players"}</button></div>`;
+      <div class="actions"><button type="button" id="publish-stats" ${session.statisticsPublished ? "disabled" : ""}>
+        ${session.statisticsPublished ? "Statistics published" : "Publish the statistics to Players"}</button></div>`;
     const participants = (state.participants ?? []).length
       ? `<h3>Co-facilitators</h3>
          <p class="counter">A Co-facilitator can open and close Steps in your place. Be careful: anyone who takes back their nickname gets their rights.</p>

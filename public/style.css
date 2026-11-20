@@ -141,3 +141,16 @@ td.num, th.num { text-align: right; }
 .ref:hover .tooltip, .ref:focus .tooltip, .ref.open .tooltip { display: block; }
 .participant-list { list-style: none; padding: 0; margin: 0; }
 .participant-list li { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 4px 0; border-bottom: 1px solid var(--border); }
+
+details.question-result > summary { cursor: pointer; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+details.question-result[open] > summary { margin-bottom: 8px; }
+.fold-title { font-weight: 600; }
+.fold-outcome, .fold-distribution, .fold-comments { font-size: 0.9rem; }
+.level { font-size: 0.8rem; font-weight: 600; border-radius: 999px; padding: 1px 8px; border: 1px solid currentColor; }
+.level-consensus { color: #15803d; background: #dcfce7; }
+.level-near_consensus { color: #9a3412; background: #ffedd5; }
+.level-divided { color: #b91c1c; background: #fee2e2; }
+.level-unassessed { color: #4b5563; background: #f3f4f6; }
+.consensus-banner { font-weight: 600; border-radius: 8px; padding: 6px 10px; margin: 0 0 8px; }
+.consensus-banner.consensual { color: #15803d; background: #dcfce7; }
+.consensus-banner.mixed { color: #9a3412; background: #ffedd5; }

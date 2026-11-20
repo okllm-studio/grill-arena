@@ -1017,3 +1017,30 @@ test("an Option with a non-letter identifier is accepted and shown as is in the 
     body.summary,
   );
 });
+
+test("the full Summary text is pinned: skeleton, outcomes, re-asks and Scoreboard", async () => {
+  await splitVoteOnQ1();
+  const { body: step2 } = await claude.publishOpen({ ...stepFixture(2), questions: [reaskedQuestion()] });
+  await facilitator.close(step2.id);
+  const { body } = await claude.end();
+  assert.equal(
+    body.summary,
+    [
+      "# Summary: Test session",
+      "",
+      "## Step 1",
+      "",
+      "- **Q1 · Where does the tool live**: to re-ask (split vote)",
+      "",
+      "## Step 2",
+      "",
+      "- **Q2 · Where does the tool live** (re-asked from Q1): A. Dedicated repository (recommended)",
+      "",
+      "## Scoreboard",
+      "",
+      "1. alice: 0 (0 Points)",
+      "2. bob: 0 (0 Points)",
+      "",
+    ].join("\n"),
+  );
+});

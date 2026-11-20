@@ -1,5 +1,10 @@
 // Player / Facilitator page. State comes from /api/state; the SSE stream signals every change.
 
+import { createTranslator } from "/i18n.js";
+
+// Every interface text comes from the catalogue (i18n.js); English until a language can be chosen.
+const { t, plural } = createTranslator("en");
+
 const token = new URLSearchParams(location.search).get("token");
 const el = (id) => document.getElementById(id);
 
@@ -111,7 +116,7 @@ const canControl = () => isFacilitator() || state?.coFacilitator === true;
 
 /** Question number within the Session, shown so Players can refer to it. */
 const heading = (q) =>
-  `<span class="number">Q${q.number}</span>${escapeHtml(q.title ?? q.id)}${q.reaskOfNumber ? ` <small>(re-asked from Q${q.reaskOfNumber})</small>` : ""}`;
+  `<span class="number">Q${q.number}</span>${escapeHtml(q.title ?? q.id)}${q.reaskOfNumber ? ` <small>${t("question.reaskedFrom", { number: q.reaskOfNumber })}</small>` : ""}`;
 
 /** Option text prefixed with its identifier (A, B, C…), so it matches the letters cited in the body. */
 const withLetter = (o) => `${o.id}. ${o.label}`;
@@ -120,8 +125,6 @@ const optionLabel = (q, id) => {
   const option = q.options.find((o) => o.id === id);
   return option ? withLetter(option) : id;
 };
-
-const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 // --- References between Questions ------------------------------------------------
 
@@ -138,12 +141,12 @@ function tooltipContent(q) {
   const r = q.result;
   const outcome =
     r.status === "selected"
-      ? `Selected: ${optionLabel(q, r.selected)}`
+      ? t("tooltip.selected", { option: optionLabel(q, r.selected) })
       : r.split
-        ? "Split vote: to be settled verbally"
-        : "To re-ask";
+        ? t("tooltip.split")
+        : t("tooltip.toReask");
   const distribution = q.options.map((o) => `${escapeHtml(withLetter(o))}: ${r.distribution[o.id]}`).join(" · ");
-  const vote = q.myVote ? `Your Vote: ${escapeHtml(optionLabel(q, q.myVote))}` : "You did not vote.";
+  const vote = q.myVote ? t("tooltip.yourVote", { option: escapeHtml(optionLabel(q, q.myVote)) }) : t("tooltip.noVote");
   return `<strong>Q${q.number} · ${escapeHtml(q.title)}</strong><br>${escapeHtml(outcome)}<br>${distribution}<br>${vote}`;
 }
 
@@ -200,15 +203,19 @@ function render() {
   }
 
   const session = state?.session;
-  el("title").textContent = session?.title ?? "Grill Arena";
+  el("title").textContent = session?.title ?? t("app.title");
+  document.title = t("app.title");
+  el("rules-button").textContent = t("header.rules");
+  el("scoreboard-button").textContent = t("header.scoreboard");
+  el("tabs").setAttribute("aria-label", t("tabs.label"));
   const s = state?.step;
   el("progress").textContent = !session
     ? ""
     : session.ended
-      ? "Session ended"
+      ? t("progress.ended")
       : s
-        ? `Step ${s.number} · ${s.settled} settled · ~${s.remaining} to go`
-        : "Waiting for the first Step";
+        ? t("progress.step", { number: s.number, settled: s.settled, remaining: s.remaining })
+        : t("progress.waiting");
 
   renderRules();
   renderScoreboard();
@@ -234,9 +241,9 @@ function renderTabs() {
     return;
   }
   const tabs = [
-    ["step", "Current Step"],
-    ["results", `Results${state.results?.length ? ` (${state.results.length})` : ""}`],
-    ...(isFacilitator() ? [["facilitator", "Facilitator"]] : []),
+    ["step", t("tab.current")],
+    ["results", state.results?.length ? t("tab.resultsCount", { count: state.results.length }) : t("tab.results")],
+    ...(isFacilitator() ? [["facilitator", t("tab.facilitator")]] : []),
   ];
   if (!tabs.some(([id]) => id === tab)) tab = "step";
   nav.hidden = false;
@@ -258,14 +265,14 @@ function renderStep() {
   if (!session) {
     el("content").innerHTML = isFacilitator()
       ? ""
-      : `<div class="card">The Facilitator has not started the Session yet. This page will update by itself.</div>`;
+      : `<div class="card">${t("step.notStarted")}</div>`;
     return;
   }
   const s = state.step;
   // The Initial prompt is only shown to Players until the Opening of Step 1.
   const prompt =
     session.prompt && !session.promptLocked
-      ? `<section class="panel prompt-visible"><h2>Initial prompt</h2><div class="body-text">${marked.parse(session.prompt)}</div></section>`
+      ? `<section class="panel prompt-visible"><h2>${t("step.initialPrompt")}</h2><div class="body-text">${marked.parse(session.prompt)}</div></section>`
       : "";
 
   if (session.ended) {
@@ -274,11 +281,11 @@ function renderStep() {
     el("content").innerHTML = prompt + joinForm();
   } else if (!s) {
     el("content").innerHTML =
-      prompt + `<div class="card">Welcome ${escapeHtml(player().nickname)}. Claude is preparing the first Step…</div>`;
+      prompt + `<div class="card">${t("step.welcome", { nickname: escapeHtml(player().nickname) })}</div>`;
   } else if (s.state === "pending") {
     el("content").innerHTML =
       prompt +
-      `<p class="status" role="status">The Facilitator will open Step ${s.number}: you will then be able to vote.</p>` +
+      `<p class="status" role="status">${t("step.pending", { number: s.number })}</p>` +
       (state.results?.length ? resultsBlock(state.results[0]) : "");
   } else {
     el("content").innerHTML =
@@ -288,14 +295,14 @@ function renderStep() {
 
 function joinForm() {
   return `<form class="card" id="join-form">
-    <h2>Join the Session</h2>
-    <label for="nickname">Nickname</label>
+    <h2>${t("join.title")}</h2>
+    <label for="nickname">${t("join.nickname")}</label>
     <input id="nickname" name="nickname" maxlength="30" autocomplete="nickname" value="${escapeHtml(typedNickname)}" required />
-    <div class="actions"><button type="submit">Join</button></div>
+    <div class="actions"><button type="submit">${t("join.button")}</button></div>
     ${
       nicknameConflict
-        ? `<p class="reask-status">The nickname "${escapeHtml(nicknameConflict)}" is already taken. If it was you (other browser, cleared data), you can take it back.</p>
-           <div class="actions"><button type="button" class="secondary" data-resume>It's me, resume this nickname</button></div>`
+        ? `<p class="reask-status">${t("join.taken", { nickname: escapeHtml(nicknameConflict) })}</p>
+           <div class="actions"><button type="button" class="secondary" data-resume>${t("join.resume")}</button></div>`
         : ""
     }
   </form>`;
@@ -304,10 +311,10 @@ function joinForm() {
 /** Player status message: what they can do or what they are waiting for. */
 function playerStatus(s) {
   let text;
-  if (s.state === "closed") text = "Step closed. Claude is preparing what comes next…";
+  if (s.state === "closed") text = t("status.closed");
   else if (s.questions.every((q) => q.myVote !== null)) {
-    text = "You have answered every Question. Waiting for the closing: you can still change your Votes.";
-  } else text = "Vote for one Option per Question (or abstain). You can change your Vote until the closing.";
+    text = t("status.answeredAll");
+  } else text = t("status.vote");
   return `<p class="status" role="status">${text}</p>`;
 }
 
@@ -315,23 +322,16 @@ function playerStatus(s) {
 function commentStatus(q) {
   if (commentErrors.has(q.id)) return commentErrors.get(q.id);
   const draft = drafts.get(q.id);
-  if (draft !== undefined && draft !== q.myComment) return "Unsaved changes";
-  return q.myComment ? "✓ Saved" : "";
+  if (draft !== undefined && draft !== q.myComment) return t("comment.unsaved");
+  return q.myComment ? t("comment.saved") : "";
 }
 
 function renderRules() {
   el("rules").hidden = !rulesOpen;
   el("rules-button").setAttribute("aria-expanded", String(rulesOpen));
   if (!rulesOpen) return;
-  el("rules").innerHTML = `<h2>Rules</h2>
-    <ul>
-      <li>Claude publishes Questions in Steps. The Facilitator opens each Step; you then vote for one Option per Question, or abstain.</li>
-      <li>Votes stay hidden until the Step is closed; you can change yours until then.</li>
-      <li>A Comment is passed on to Claude and can open new Questions; it does not count as a Vote.</li>
-      <li>The selected Option is the one with the most Votes. With no Vote at all, it is the recommended one. On a split vote, the Question is settled verbally and Claude re-asks it.</li>
-      <li>You earn 1 Point if you voted for the selected Option. The Scoreboard and participation statistics are published at the end of the Session.</li>
-      <li>When the Comments show that no Option fits, the Facilitator can also re-ask the Question in the next Step.</li>
-    </ul>`;
+  const items = [1, 2, 3, 4, 5, 6].map((n) => `<li>${t(`rules.${n}`)}</li>`).join("");
+  el("rules").innerHTML = `<h2>${t("rules.title")}</h2><ul>${items}</ul>`;
 }
 
 function questionCard(step, q) {
@@ -341,7 +341,7 @@ function questionCard(step, q) {
     const unsent = drafts.get(q.id);
     const lost =
       unsent !== undefined && unsent !== q.myComment
-        ? `<p class="comment-error">Step closed before sending: copy your text.</p><div class="draft">${escapeHtml(unsent)}</div>`
+        ? `<p class="comment-error">${t("comment.stepClosed")}</p><div class="draft">${escapeHtml(unsent)}</div>`
         : "";
     return `<article class="card">${title}${body}${questionResult(q)}${lost}</article>`;
   }
@@ -350,26 +350,26 @@ function questionCard(step, q) {
     .map(
       (o) => `<label class="option ${q.myVote === o.id ? "chosen" : ""}">
         <input type="radio" name="vote-${q.id}" data-question="${q.id}" value="${escapeHtml(o.id)}" ${q.myVote === o.id ? "checked" : ""} />
-        <span>${withReferences(escapeHtml(withLetter(o)))}${o.id === q.recommended ? '<span class="badge recommended">recommended</span>' : ""}</span>
+        <span>${withReferences(escapeHtml(withLetter(o)))}${o.id === q.recommended ? `<span class="badge recommended">${t("badge.recommended")}</span>` : ""}</span>
       </label>`,
     )
     .join("");
   const comment = drafts.get(q.id) ?? q.myComment;
   const distribution = q.distribution
-    ? `<p class="counter">Distribution: ${q.options.map((o) => `${escapeHtml(withLetter(o))} ${q.distribution[o.id]}`).join(" · ")}</p>`
+    ? `<p class="counter">${t("question.distribution", { distribution: q.options.map((o) => `${escapeHtml(withLetter(o))} ${q.distribution[o.id]}`).join(" · ") })}</p>`
     : "";
   return `<article class="card">
     ${title}${body}
     <div class="options">${options}</div>
     <div class="actions">
-      <button type="button" class="secondary" data-abstain="${q.id}" ${q.myVote ? "" : "disabled"}>Abstain</button>
-      <span class="counter">${q.voters}/${state.players} voted</span>
+      <button type="button" class="secondary" data-abstain="${q.id}" ${q.myVote ? "" : "disabled"}>${t("question.abstain")}</button>
+      <span class="counter">${t("question.voted", { voters: q.voters, players: state.players })}</span>
     </div>
     ${distribution}
-    <label for="comment-${q.id}" class="counter">Comment (passed on to Claude, visible at closing)</label>
+    <label for="comment-${q.id}" class="counter">${t("question.commentLabel")}</label>
     <textarea id="comment-${q.id}" data-comment="${q.id}" rows="2">${escapeHtml(comment)}</textarea>
     <p class="counter comment-status ${commentErrors.has(q.id) ? "comment-error" : ""}" data-comment-status="${q.id}" role="status">${commentStatus(q)}</p>
-    ${q.myVote ? `<p class="counter">Vote saved, you can change it until the closing.</p>` : ""}
+    ${q.myVote ? `<p class="counter">${t("question.voteSaved")}</p>` : ""}
   </article>`;
 }
 
@@ -382,34 +382,24 @@ function questionResult(q) {
       const selected = r.status === "selected" && r.selected === o.id;
       return `<div class="bar ${selected ? "selected" : ""}">
         <div class="track"><div class="filled" style="width:${(n / total) * 100}%">
-          ${selected ? "✓ " : ""}${escapeHtml(withLetter(o))}${o.id === q.recommended ? '<span class="badge recommended">recommended</span>' : ""}
+          ${selected ? "✓ " : ""}${escapeHtml(withLetter(o))}${o.id === q.recommended ? `<span class="badge recommended">${t("badge.recommended")}</span>` : ""}
         </div></div><span>${n}</span>
       </div>`;
     })
     .join("");
   const status =
     r.status === "to_reask"
-      ? `<p class="reask-status">${r.split ? "Split vote: to be settled verbally, Claude will re-ask this Question." : "To re-ask: Claude will rephrase this Question."}</p>`
+      ? `<p class="reask-status">${r.split ? t("result.splitReask") : t("result.reask")}</p>`
       : "";
   const comments = r.comments.length
     ? `<ul class="comments">${r.comments
         .map((c) => `<li><strong>${escapeHtml(c.nickname)}</strong>: ${escapeHtml(c.text)}</li>`)
         .join("")}</ul>`
     : "";
-  return `${status}${bars}<p class="counter">${plural(r.abstentions, "abstention")}</p>${comments}`;
+  return `${status}${bars}<p class="counter">${plural(r.abstentions, "noun.abstention")}</p>${comments}`;
 }
 
 // --- "Results" tab ------------------------------------------------------------------------
-
-/** Texts of the folded results, gathered here to be extracted into a catalogue later. */
-const FOLD_TEXT = {
-  levels: { consensus: "Consensus", near_consensus: "Near-consensus", divided: "Divided", unassessed: "Not assessed" },
-  reask: "to re-ask",
-  abstentions: "abst.",
-  comments: "Comments",
-  consensualStep: "Consensual Step",
-  unanimous: (n, m) => `${plural(n, "Question")} out of ${m} unanimous`,
-};
 
 /** Questions (by number) the user has unfolded: kept across re-renders triggered by live updates. */
 const unfoldedQuestions = new Set();
@@ -420,7 +410,9 @@ function consensusBanner(step) {
   if (!c || !c.assessed) return "";
   const consensual = c.consensual === true;
   return `<p class="consensus-banner ${consensual ? "consensual" : "mixed"}" role="status">${escapeHtml(
-    consensual ? FOLD_TEXT.consensualStep : FOLD_TEXT.unanimous(c.atConsensus, c.assessed),
+    consensual
+      ? t("fold.consensualStep")
+      : t("fold.unanimous", { questions: plural(c.atConsensus, "noun.Question"), total: c.assessed }),
   )}</p>`;
 }
 
@@ -429,15 +421,15 @@ function foldedSummary(q) {
   const r = q.result;
   const level = r.consensus ?? "unassessed";
   const selected = r.status === "selected" ? q.options.find((o) => o.id === r.selected) : null;
-  const outcome = selected ? withLetter(selected) : FOLD_TEXT.reask;
+  const outcome = selected ? withLetter(selected) : t("fold.reask");
   const distribution = [
     ...q.options.map((o) => `${o.id} ${r.distribution[o.id]}`),
-    `${FOLD_TEXT.abstentions} ${r.abstentions}`,
+    `${t("fold.abstentions")} ${r.abstentions}`,
   ].join(" · ");
   const comments = r.comments.length
-    ? `<span class="fold-comments">${FOLD_TEXT.comments}: ${r.comments.length}</span>`
+    ? `<span class="fold-comments">${t("fold.comments")}: ${r.comments.length}</span>`
     : "";
-  return `<summary><span class="level level-${level}">${escapeHtml(FOLD_TEXT.levels[level])}</span>
+  return `<summary><span class="level level-${level}">${escapeHtml(t(`fold.level.${level}`))}</span>
     <span class="fold-title">${heading(q)}</span>
     <span class="fold-outcome">${escapeHtml(outcome)}</span>
     <span class="fold-distribution">${escapeHtml(distribution)}</span>${comments}</summary>`;
@@ -448,12 +440,12 @@ function resultsBlock(step) {
   const questions = step.questions
     .map((q) => {
       const myChoice = q.myVote ? optionLabel(q, q.myVote) : null;
-      const vote = myChoice ? `Your Vote: ${escapeHtml(myChoice)}` : "You did not vote on this Question.";
+      const vote = myChoice ? t("results.yourVote", { option: escapeHtml(myChoice) }) : t("results.noVote");
       const open = unfoldedQuestions.has(q.number) ? "open" : "";
       return `<details class="question-result" data-fold="${q.number}" ${open}>${foldedSummary(q)}${questionResult(q)}<p class="counter">${vote}</p></details>`;
     })
     .join("");
-  return `<section class="card"><h2>Results of Step ${step.number}</h2>${consensusBanner(step)}${questions}</section>`;
+  return `<section class="card"><h2>${t("results.title", { number: step.number })}</h2>${consensusBanner(step)}${questions}</section>`;
 }
 
 function renderResults() {
@@ -464,7 +456,7 @@ function renderResults() {
   const steps = state.results ?? [];
   el("results").innerHTML = steps.length
     ? steps.map(resultsBlock).join("")
-    : `<div class="card">No Step has been closed yet.</div>`;
+    : `<div class="card">${t("results.none")}</div>`;
 }
 
 // --- Scoreboard and statistics ----------------------------------------------------
@@ -486,21 +478,21 @@ function scoreboardHtml() {
     .map((l, i) => {
       const s = stats.get(l.nickname);
       return `<tr>
-        <td>${i + 1}</td><td>${escapeHtml(l.nickname)}${l.nickname === player()?.nickname ? " (me)" : ""}</td>
+        <td>${i + 1}</td><td>${escapeHtml(l.nickname)}${l.nickname === player()?.nickname ? ` ${t("scoreboard.me")}` : ""}</td>
         <td class="num"><strong>${l.total}</strong></td>
         <td class="num">${l.stepGain ? `<span class="gain">+${l.stepGain}</span>` : ""}</td>
         <td class="num">${s?.votes ?? 0}</td><td class="num">${s?.comments ?? 0}</td><td class="num">${s?.abstentions ?? 0}</td>
       </tr>`;
     })
     .join("");
-  return `<h2>Scoreboard</h2>
-    <div class="scroll"><table><thead><tr><th>#</th><th>Player</th><th class="num">Points</th><th class="num">Step</th>
-    <th class="num">Votes</th><th class="num">Comments</th><th class="num">Abstentions</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+  return `<h2>${t("scoreboard.title")}</h2>
+    <div class="scroll"><table><thead><tr><th>#</th><th>${t("scoreboard.player")}</th><th class="num">${t("scoreboard.points")}</th><th class="num">${t("scoreboard.step")}</th>
+    <th class="num">${t("scoreboard.votes")}</th><th class="num">${t("scoreboard.comments")}</th><th class="num">${t("scoreboard.abstentions")}</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 /** End-of-Session card: the Scoreboard (only if the server sent it, i.e. published) shown once, then the Summary. */
 function endCard() {
-  return `<div class="card"><h2>End of the Session</h2>
+  return `<div class="card"><h2>${t("end.title")}</h2>
     ${state.scoreboard ? scoreboardHtml() : ""}</div>
     ${state.session.summary ? `<article class="card body-text">${marked.parse(state.session.summary)}</article>` : ""}`;
 }
@@ -512,7 +504,7 @@ let controlsFolded = false;
 
 function controlsHeader(title) {
   return `<div class="header-bar"><h2>${title}</h2>
-    <button type="button" class="secondary" id="toggle-controls" aria-expanded="${!controlsFolded}">${controlsFolded ? "Show" : "Fold"}</button></div>`;
+    <button type="button" class="secondary" id="toggle-controls" aria-expanded="${!controlsFolded}">${controlsFolded ? t("controls.show") : t("controls.fold")}</button></div>`;
 }
 
 function renderControls() {
@@ -525,9 +517,9 @@ function renderControls() {
   }
   if (s.state === "pending") {
     controls.hidden = false;
-    controls.innerHTML = `${controlsHeader(`Step ${s.number} ready`)}
-      <p class="counter" ${controlsFolded ? "hidden" : ""}>Claude has published the Step. Players cannot see its Questions yet: open it when the group is ready${s.number === 1 ? " (the Initial prompt and the live distribution will then be locked)" : ""}.</p>
-      <div class="actions"><button type="button" id="open-step">Open Step ${s.number}</button></div>`;
+    controls.innerHTML = `${controlsHeader(t("controls.ready", { number: s.number }))}
+      <p class="counter" ${controlsFolded ? "hidden" : ""}>${t("controls.readyHint", { locked: s.number === 1 ? t("controls.readyLocked") : "" })}</p>
+      <div class="actions"><button type="button" id="open-step">${t("controls.open", { number: s.number })}</button></div>`;
     return;
   }
   // Keep the choices in progress across refreshes.
@@ -536,7 +528,7 @@ function renderControls() {
   const reask = s.questions
     .map(
       (q) => `<label class="counter"><input type="checkbox" data-reask="${q.id}" style="width:auto" />
-          ${heading(q)} (${q.voters}/${state.players} voted): no Option fits, re-ask it</label>`,
+          ${t("controls.reaskLabel", { heading: heading(q), voters: q.voters, players: state.players })}</label>`,
     )
     .join("<br />");
   const tiebreaks = toBreak
@@ -545,16 +537,16 @@ function renderControls() {
       const options = tiedOptions
         .map((id) => `<option value="${escapeHtml(id)}">${escapeHtml(optionLabel(q, id))}</option>`)
         .join("");
-      return `<label class="counter">Break the tie on "${heading(q)}"
+      return `<label class="counter">${t("controls.tiebreak", { heading: heading(q) })}
           <select data-tiebreak="${question}">${options}</select></label>`;
     })
     .join("");
   controls.hidden = false;
-  controls.innerHTML = `${controlsHeader(`Closing of Step ${s.number}`)}
+  controls.innerHTML = `${controlsHeader(t("controls.closing", { number: s.number }))}
     <div ${controlsFolded ? "hidden" : ""}>
-    <p class="counter">Only tick the Questions where no Option fits; the others are settled by the Votes (a split vote is settled verbally). Normally, tick nothing.</p>
+    <p class="counter">${t("controls.closingHint")}</p>
     <div>${reask}</div>${tiebreaks}</div>
-    <div class="actions"><button type="button" id="close-step">Close the Step</button></div>`;
+    <div class="actions"><button type="button" id="close-step">${t("controls.close")}</button></div>`;
   for (const c of controls.querySelectorAll("[data-reask]")) c.checked = checked.has(c.dataset.reask);
   for (const x of controls.querySelectorAll("[data-tiebreak]")) if (choices[x.dataset.tiebreak]) x.value = choices[x.dataset.tiebreak];
 }
@@ -565,19 +557,19 @@ function renderControls() {
 function nextAction() {
   let text;
   if (!state?.session) {
-    text = "Run the <code>/grilling-arena</code> skill in Claude Code to start the Session.";
+    text = t("next.start");
   } else if (state.session.ended) {
-    text = "Session ended. The Summary is in the \"Current Step\" tab; stop the server with Ctrl+C.";
+    text = t("next.ended");
   } else if (!state.step) {
-    text = "Wait for Claude to publish the first Step.";
+    text = t("next.waitFirst");
   } else if (state.step.state === "pending") {
-    text = `Open Step ${state.step.number} (control at the top of the page) when the group is ready.`;
+    text = t("next.open", { number: state.step.number });
   } else if (state.step.state === "open") {
-    text = "Close the Step (controls at the top of the page) when everyone has voted.";
+    text = t("next.close");
   } else {
-    text = "Claude is preparing what comes next: the next Step, or the end of the Session.";
+    text = t("next.preparing");
   }
-  return `<p class="status" role="status"><strong>Next action:</strong> ${text}</p>`;
+  return `<p class="status" role="status"><strong>${t("next.label")}</strong> ${text}</p>`;
 }
 
 async function loadInfo() {
@@ -594,7 +586,7 @@ function renderFacilitator() {
   const area = el("facilitator");
   if (!token || area.hidden) return;
   if (invalidToken) {
-    area.innerHTML = `<p>Invalid Facilitator token. Open the "Facilitator" link shown in the terminal where the server is running (<code>make start</code>), or read it from <code>sessions/.token</code>.</p>`;
+    area.innerHTML = `<p>${t("facilitator.invalidToken")}</p>`;
     return;
   }
   if (!info) {
@@ -611,37 +603,37 @@ function renderFacilitator() {
   let content = "";
   if (session) {
     const prompt = locked
-      ? `<h3>Initial prompt</h3><p class="counter">Locked since the Opening of Step 1.</p><div class="body-text">${marked.parse(session.prompt ?? "")}</div>`
-      : `<h3>Initial prompt</h3>
-         <label for="prompt-edit" class="counter">Visible to all Players until the Opening of Step 1; Markdown. Used as the starting point of the grilling.</label>
+      ? `<h3>${t("step.initialPrompt")}</h3><p class="counter">${t("facilitator.promptLocked")}</p><div class="body-text">${marked.parse(session.prompt ?? "")}</div>`
+      : `<h3>${t("step.initialPrompt")}</h3>
+         <label for="prompt-edit" class="counter">${t("facilitator.promptHint")}</label>
          <textarea id="prompt-edit" rows="6">${escapeHtml(promptDraft ?? session.prompt ?? "")}</textarea>
-         <div class="actions"><button type="button" id="save-prompt">Save the prompt</button></div>`;
-    const setting = `<h3>Vote distribution</h3>
+         <div class="actions"><button type="button" id="save-prompt">${t("facilitator.savePrompt")}</button></div>`;
+    const setting = `<h3>${t("facilitator.distribution")}</h3>
       <label><input type="checkbox" id="live-distribution" style="width:auto" ${session.liveDistribution ? "checked" : ""} ${locked ? "disabled" : ""} />
-        Show the live distribution, once half of the Players have voted${locked ? " (locked since the Opening of Step 1)" : ""}</label>`;
+        ${t("facilitator.liveDistribution", { locked: locked ? t("facilitator.liveLocked") : "" })}</label>`;
     // Once the Session has ended, the end-of-Session page carries the Scoreboard: no block here.
     const publication = session.ended
       ? ""
-      : `<h3>Scoreboard and statistics</h3>
+      : `<h3>${t("facilitator.publication")}</h3>
       ${state.scoreboard ? scoreboardHtml() : ""}
       <div class="actions"><button type="button" id="publish-stats" ${session.statisticsPublished ? "disabled" : ""}>
-        ${session.statisticsPublished ? "Statistics published" : "Publish the statistics to Players"}</button></div>`;
+        ${session.statisticsPublished ? t("facilitator.published") : t("facilitator.publish")}</button></div>`;
     const participants = (state.participants ?? []).length
-      ? `<h3>Co-facilitators</h3>
-         <p class="counter">A Co-facilitator can open and close Steps in your place. Be careful: anyone who takes back their nickname gets their rights.</p>
+      ? `<h3>${t("facilitator.coFacilitators")}</h3>
+         <p class="counter">${t("facilitator.coFacilitatorHint")}</p>
          <ul class="participant-list">${state.participants
            .map(
-             (p) => `<li><span>${escapeHtml(p.nickname)}${p.coFacilitator ? ' <span class="badge recommended">co-facilitator</span>' : ""}</span>
-               <button type="button" class="secondary" data-cofacilitator="${p.id}" data-active="${p.coFacilitator}">${p.coFacilitator ? "Revoke" : "Appoint"}</button></li>`,
+             (p) => `<li><span>${escapeHtml(p.nickname)}${p.coFacilitator ? ` <span class="badge recommended">${t("badge.coFacilitator")}</span>` : ""}</span>
+               <button type="button" class="secondary" data-cofacilitator="${p.id}" data-active="${p.coFacilitator}">${p.coFacilitator ? t("facilitator.revoke") : t("facilitator.appoint")}</button></li>`,
            )
            .join("")}</ul>`
       : "";
     content = prompt + setting + publication + participants;
   }
 
-  area.innerHTML = `<h2>Facilitator</h2>
+  area.innerHTML = `<h2>${t("facilitator.title")}</h2>
     ${nextAction()}
-    <h3>Player access</h3>
+    <h3>${t("facilitator.access")}</h3>
     <div class="access"><div class="qr">${qr.createSvgTag({ cellSize: 4, margin: 0 })}</div>
     <div>${info.map((u) => `<code>${escapeHtml(u)}</code>`).join("<br />")}</div></div>
     ${content}`;
@@ -651,9 +643,9 @@ function renderFacilitator() {
 
 async function savePrompt() {
   const { ok, data } = await api("PUT", "/api/session/prompt", { prompt: promptDraft ?? state.session.prompt });
-  if (!ok) return notify(data.error ?? "Prompt refused");
+  if (!ok) return notify(data.error ?? t("notify.promptRefused"));
   promptDraft = null;
-  notify("Prompt saved");
+  notify(t("notify.promptSaved"));
   await refresh({ force: true });
 }
 
@@ -664,7 +656,7 @@ async function answer(questionId, body, options) {
     { player: player().id, ...body },
     options,
   );
-  if (!ok && !(status === 409 && "comment" in body)) notify(data.error ?? "Answer refused");
+  if (!ok && !(status === 409 && "comment" in body)) notify(data.error ?? t("notify.answerRefused"));
   return { ok, status };
 }
 
@@ -676,7 +668,7 @@ async function join(resume) {
     nicknameConflict = nickname.trim();
     return render();
   }
-  if (!ok) return notify(data.error ?? "Could not join");
+  if (!ok) return notify(data.error ?? t("notify.joinFailed"));
   nicknameConflict = null;
   typedNickname = "";
   remember(data);
@@ -695,12 +687,12 @@ async function saveComment(questionId, options) {
     return;
   }
   if (state?.step?.state !== "open") {
-    commentErrors.set(questionId, "Step closed before sending: copy your text.");
+    commentErrors.set(questionId, t("comment.stepClosed"));
     return renderCommentStatus(questionId);
   }
   const { ok, status } = await answer(questionId, { comment: text }, options);
   if (!ok) {
-    if (status === 409) commentErrors.set(questionId, "Step closed before sending: copy your text.");
+    if (status === 409) commentErrors.set(questionId, t("comment.stepClosed"));
     await refresh({ force: true });
     return;
   }
@@ -740,7 +732,7 @@ document.addEventListener("change", async (ev) => {
   }
   if (ev.target.id === "live-distribution") {
     const { ok, data } = await api("PUT", "/api/session/live-distribution", { enabled: ev.target.checked });
-    if (!ok) notify(data.error ?? "Setting refused");
+    if (!ok) notify(data.error ?? t("notify.settingRefused"));
     await refresh({ force: true });
   }
 });
@@ -827,7 +819,7 @@ document.addEventListener("click", async (ev) => {
   if (d.cofacilitator) {
     const method = d.active === "true" ? "DELETE" : "PUT";
     const { ok, data } = await api(method, `/api/session/co-facilitators/${d.cofacilitator}`);
-    if (!ok) notify(data.error ?? "Appointment refused");
+    if (!ok) notify(data.error ?? t("notify.appointmentRefused"));
     return refresh({ force: true });
   }
   if (target.id === "rules-button") {
@@ -841,13 +833,13 @@ document.addEventListener("click", async (ev) => {
   if (target.id === "save-prompt") return savePrompt();
   if (target.id === "publish-stats") {
     const { ok, data } = await api("POST", "/api/session/statistics", {});
-    if (!ok) return notify(data.error ?? "Publication refused");
-    notify("Statistics published");
+    if (!ok) return notify(data.error ?? t("notify.publicationRefused"));
+    notify(t("notify.statisticsPublished"));
     return refresh({ force: true });
   }
   if (target.id === "open-step") {
     const { ok, data } = await api("POST", `/api/steps/${state.step.id}/opening`, {});
-    if (!ok) notify(data.error ?? "Opening refused");
+    if (!ok) notify(data.error ?? t("notify.openingRefused"));
     return refresh({ force: true });
   }
   if (target.id === "close-step") {
@@ -858,10 +850,10 @@ document.addEventListener("click", async (ev) => {
     const { ok, status, data } = await api("POST", `/api/steps/${state.step.id}/closing`, { tiebreaks, toReask });
     if (status === 409 && data.tied) {
       toBreak = data.tied;
-      notify("Tie: choose the selected Option, then close again.");
+      notify(t("notify.tie"));
       return render();
     }
-    if (!ok) return notify(data.error ?? "Closing refused");
+    if (!ok) return notify(data.error ?? t("notify.closingRefused"));
     toBreak = [];
     return refresh({ force: true });
   }

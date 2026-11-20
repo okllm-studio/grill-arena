@@ -1,12 +1,18 @@
 // Player / Facilitator page. State comes from /api/state; the SSE stream signals every change.
 
-import { createTranslator } from "/i18n.js";
+import { createTranslator, DEFAULT_LANGUAGE } from "/i18n.js";
 
-// Every interface text comes from the catalogue (i18n.js); English until a language can be chosen.
-const { t, plural } = createTranslator("en");
+// Every interface text comes from the catalogue (i18n.js), in the language of the Session (set at each render).
+let { t, plural } = createTranslator(DEFAULT_LANGUAGE);
 
 const token = new URLSearchParams(location.search).get("token");
 const el = (id) => document.getElementById(id);
+
+/** Closed list of interface languages, each named in its own language. */
+const LANGUAGES = [
+  ["en", "English"],
+  ["fr", "Français"],
+];
 
 let state = null;
 let scoreboardOpen = false;
@@ -203,6 +209,9 @@ function render() {
   }
 
   const session = state?.session;
+  // The language comes from the state: Players switch with the next refresh, without reloading.
+  ({ t, plural } = createTranslator(session?.language));
+  document.documentElement.lang = session?.language ?? DEFAULT_LANGUAGE;
   el("title").textContent = session?.title ?? t("app.title");
   document.title = t("app.title");
   el("rules-button").textContent = t("header.rules");
@@ -611,6 +620,10 @@ function renderFacilitator() {
     const setting = `<h3>${t("facilitator.distribution")}</h3>
       <label><input type="checkbox" id="live-distribution" style="width:auto" ${session.liveDistribution ? "checked" : ""} ${locked ? "disabled" : ""} />
         ${t("facilitator.liveDistribution", { locked: locked ? t("facilitator.liveLocked") : "" })}</label>`;
+    const language = `<h3>${t("facilitator.language")}</h3>
+      <select id="language" aria-label="${t("facilitator.language")}">
+        ${LANGUAGES.map(([code, name]) => `<option value="${code}" ${session.language === code ? "selected" : ""}>${name}</option>`).join("")}
+      </select>`;
     // Once the Session has ended, the end-of-Session page carries the Scoreboard: no block here.
     const publication = session.ended
       ? ""
@@ -628,7 +641,7 @@ function renderFacilitator() {
            )
            .join("")}</ul>`
       : "";
-    content = prompt + setting + publication + participants;
+    content = prompt + setting + language + publication + participants;
   }
 
   area.innerHTML = `<h2>${t("facilitator.title")}</h2>
@@ -728,6 +741,11 @@ document.addEventListener("change", async (ev) => {
   const q = ev.target.dataset.question;
   if (q) {
     await answer(q, { option: ev.target.value });
+    return refresh({ force: true });
+  }
+  if (ev.target.id === "language") {
+    const { ok, data } = await api("PUT", "/api/session/language", { language: ev.target.value });
+    if (!ok) notify(data.error ?? t("notify.settingRefused"));
     return refresh({ force: true });
   }
   if (ev.target.id === "live-distribution") {

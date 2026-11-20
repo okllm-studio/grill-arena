@@ -237,6 +237,7 @@ test("at closing, Claude receives the selected option, the distribution, the Com
       number: 1,
       status: "selected",
       selected: "B",
+      consensus: "near_consensus",
       distribution: { A: 1, B: 2 },
       abstentions: 1,
       comments: [{ nickname: "alice", text: "the monorepo is enough" }],
@@ -483,7 +484,7 @@ test("at the end of the Session, Claude receives the Summary and Players see the
   for (const expected of [
     "# Summary: Arena",
     "## Step 1",
-    "- **Q1 · Where does the tool live**: Folder in the monorepo (not recommended)",
+    "- **Q1 · Where does the tool live**: B. Folder in the monorepo (not recommended)",
     "## Step 2",
     "- **Q2 · Stack**: to re-ask",
     "## Scoreboard",
@@ -819,7 +820,7 @@ test("the Summary gives each Question's number and flags the Question that anoth
   const lines = body.summary.split("\n");
   assert.ok(lines.includes("- **Q1 · Where does the tool live**: to re-ask (split vote)"), body.summary);
   assert.ok(
-    lines.includes("- **Q2 · Where does the tool live** (re-asked from Q1): Dedicated repository (recommended)"),
+    lines.includes("- **Q2 · Where does the tool live** (re-asked from Q1): A. Dedicated repository (recommended)"),
     body.summary,
   );
 });
@@ -903,4 +904,235 @@ test("starting a new Session releases the requests waiting for a result", async 
   const released = await Promise.race([waiting, new Promise((resolve) => setTimeout(() => resolve("hung"), 1000))]);
   assert.notEqual(released, "hung");
   assert.equal(released.status, 409);
+});
+
+// --- Consensus levels ---------------------------------------------------------
+
+function optionQuestion(id, options = ["A", "B", "C"]) {
+  return { id, title: id, body: "", options: options.map((o) => ({ id: o, label: o })), recommended: options[0] };
+}
+
+/** Opens a Step with the given Questions, has Players vote (`votes[questionId]` = optionId per player), closes it. */
+async function closedStep(questionIds, votesByQuestion, { players = 4, decisions = {} } = {}) {
+  await claude.startSession();
+  const { body: step } = await claude.publishOpen({
+    number: 1,
+    settled: 0,
+    remaining: 4,
+    questions: questionIds.map((id) => optionQuestion(id)),
+  });
+  const joined = [];
+  for (let i = 0; i < players; i++) joined.push(await joinAs(`p${i}`));
+  for (const [qid, votes] of Object.entries(votesByQuestion)) {
+    for (const [i, option] of Object.entries(votes)) {
+      await joined[i].answer(step.id, qid, { option });
+    }
+  }
+  const before = await joined[0].state();
+  assert.equal(before.step.questions[0].result, undefined, "no level before closing");
+  assert.equal(before.step.consensus, undefined, "no Step figures before closing");
+  assert.equal((await facilitator.close(step.id, decisions)).status, 200);
+  const { body: result } = await claude.result(step.id);
+  return { step, result, view: await joined[0].state() };
+}
+
+const levels = (result) => result.questions.map((q) => q.consensus);
+
+test("a unanimous Question is at Consensus, one dissenting Vote is Near-consensus, any other spread is Divided", async () => {
+  const { result } = await closedStep(["q1", "q2", "q3"], {
+    q1: { 0: "A", 1: "A", 2: "A", 3: "A" },
+    q2: { 0: "A", 1: "A", 2: "A", 3: "B" },
+    q3: { 0: "A", 1: "A", 2: "B", 3: "B" },
+  }, { decisions: { tiebreaks: { q3: "A" } } });
+  assert.deepEqual(levels(result), ["consensus", "near_consensus", "divided"]);
+});
+
+test("a split vote and a Question to re-ask are Divided", async () => {
+  const { result } = await closedStep(["q1", "q2"], {
+    q1: { 0: "A", 1: "B" },
+    q2: { 0: "A", 1: "A", 2: "A" },
+  }, { decisions: { toReask: ["q2"] } });
+  assert.equal(result.questions[0].status, "to_reask");
+  assert.deepEqual(levels(result), ["divided", "divided"]);
+});
+
+test("Abstentions and unanswered Players do not change the level", async () => {
+  const { result } = await closedStep(["q1", "q2"], {
+    q1: { 0: "A", 1: "A", 2: null }, // 2 abstains explicitly, 3 never answers
+    q2: { 0: "A", 1: "A", 2: "A", 3: "B" },
+  });
+  assert.deepEqual(levels(result), ["consensus", "near_consensus"]);
+});
+
+test("a Question with 0 or 1 voter is not assessed", async () => {
+  const { result } = await closedStep(["q1", "q2"], { q2: { 0: "A" } });
+  assert.deepEqual(levels(result), [undefined, undefined]);
+});
+
+test("Step figures count only assessed Questions; a Near-consensus is not unanimous; the flag needs all of them at Consensus", async () => {
+  const mixed = await closedStep(["q1", "q2", "q3"], {
+    q1: { 0: "A", 1: "A" },
+    q2: { 0: "A", 1: "A", 2: "A", 3: "B" },
+  });
+  assert.deepEqual(mixed.result.consensus, { assessed: 2, atConsensus: 1, consensual: false });
+
+  const { result } = await closedStep(["q1", "q2", "q3"], {
+    q1: { 0: "A", 1: "A" },
+    q2: { 0: "B", 1: "B", 2: "B" },
+    q3: { 0: "C" },
+  });
+  assert.deepEqual(result.consensus, { assessed: 2, atConsensus: 2, consensual: true });
+});
+
+test("a Step with no assessed Question has no consensus status", async () => {
+  const { result } = await closedStep(["q1"], { q1: { 0: "A" } });
+  assert.deepEqual(result.consensus, { assessed: 0, atConsensus: 0 });
+});
+
+test("Players get the levels and Step figures in their views of closed Steps, same as Claude", async () => {
+  const { result, view } = await closedStep(["q1", "q2"], {
+    q1: { 0: "A", 1: "A", 2: "A" },
+    q2: { 0: "A", 1: "A", 2: "A", 3: "B" },
+  });
+  assert.deepEqual(view.step.questions.map((q) => q.result.consensus), levels(result));
+  assert.deepEqual(view.step.consensus, result.consensus);
+  assert.deepEqual(view.results[0].consensus, result.consensus);
+  assert.deepEqual(view.results[0].questions.map((q) => q.result.consensus), levels(result));
+});
+
+test("an Option with a non-letter identifier is accepted and shown as is in the Summary", async () => {
+  await claude.startSession("Arena");
+  const content = stepFixture(1);
+  content.questions[0].options = [
+    { id: "opt-1", label: "Dedicated repository" },
+    { id: "2", label: "Folder in the monorepo" },
+  ];
+  content.questions[0].recommended = "opt-1";
+  const { status, body: step } = await claude.publishOpen(content);
+  assert.equal(status, 201);
+  await facilitator.close(step.id);
+  const { body } = await claude.end();
+  assert.ok(
+    body.summary.split("\n").includes("- **Q1 · Where does the tool live**: opt-1. Dedicated repository (recommended)"),
+    body.summary,
+  );
+});
+
+test("the full Summary text is pinned: skeleton, outcomes, re-asks and Scoreboard", async () => {
+  await splitVoteOnQ1();
+  const { body: step2 } = await claude.publishOpen({ ...stepFixture(2), questions: [reaskedQuestion()] });
+  await facilitator.close(step2.id);
+  const { body } = await claude.end();
+  assert.equal(
+    body.summary,
+    [
+      "# Summary: Test session",
+      "",
+      "## Step 1",
+      "",
+      "- **Q1 · Where does the tool live**: to re-ask (split vote)",
+      "",
+      "## Step 2",
+      "",
+      "- **Q2 · Where does the tool live** (re-asked from Q1): A. Dedicated repository (recommended)",
+      "",
+      "## Scoreboard",
+      "",
+      "1. alice: 0 (0 Points)",
+      "2. bob: 0 (0 Points)",
+      "",
+    ].join("\n"),
+  );
+});
+
+// --- Interface language ------------------------------------------------------
+
+const setLanguage = (language, { token = TOKEN, player } = {}) =>
+  request("PUT", "/api/session/language", { body: { language, ...(player && { player }) }, token });
+
+async function restartWith(options = {}) {
+  await server.close();
+  server = await start({ port: 0, dir, token: TOKEN, ...options });
+}
+
+test("a new Session starts in English, and the language is in the state seen by Players", async () => {
+  await claude.startSession();
+  const alice = await joinAs("alice");
+  assert.equal((await alice.state()).session.language, "en");
+});
+
+test("GRILL_LANG sets the initial language; an unsupported value falls back to English without failing", async () => {
+  await restartWith({ language: "fr" });
+  await claude.startSession();
+  assert.equal((await request("GET", "/api/state")).body.session.language, "fr");
+
+  await restartWith({ language: "de" });
+  await claude.startSession();
+  assert.equal((await request("GET", "/api/state")).body.session.language, "en");
+});
+
+test("the Facilitator changes the language before and after the Opening of Step 1, but only to a supported one", async () => {
+  await claude.startSession();
+  const alice = await joinAs("alice");
+  assert.equal((await setLanguage("fr")).status, 200);
+  assert.equal((await alice.state()).session.language, "fr");
+
+  await claude.publishOpen(stepFixture());
+  assert.equal((await setLanguage("en")).status, 200, "never locked");
+  assert.equal((await alice.state()).session.language, "en");
+
+  assert.equal((await setLanguage("de")).status, 400);
+  assert.equal((await alice.state()).session.language, "en");
+  assert.equal((await setLanguage("fr", { token: null })).status, 401);
+});
+
+test("a Co-facilitator changes the language, a Player is refused", async () => {
+  await claude.startSession();
+  const alice = await joinAs("alice");
+  const bob = await joinAs("bob");
+  await appoint(bob.id);
+  assert.equal((await setLanguage("fr", { token: null, player: alice.id })).status, 403);
+  assert.equal((await alice.state()).session.language, "en");
+  assert.equal((await setLanguage("fr", { token: null, player: bob.id })).status, 200);
+  assert.equal((await alice.state()).session.language, "fr");
+});
+
+test("the language survives a server restart", async () => {
+  await claude.startSession();
+  await setLanguage("fr");
+  await restartWith();
+  assert.equal((await request("GET", "/api/state")).body.session.language, "fr");
+});
+
+test("the Summary is generated in the Session language, on the end page and in Claude's result", async () => {
+  await claude.startSession("Arena");
+  const alice = await joinAs("alice");
+  const { body: step } = await claude.publishOpen(stepFixture());
+  await alice.answer(step.id, "q1", { option: "B" });
+  await facilitator.close(step.id);
+  await setLanguage("fr");
+
+  const { body } = await claude.end();
+  const lines = body.summary.split("\n");
+  for (const expected of ["# Synthèse : Arena", "## Étape 1", "## Tableau des scores", "1. alice: 1 (1 point)"]) {
+    assert.ok(lines.includes(expected), `missing line: ${expected}\n${body.summary}`);
+  }
+  assert.ok(lines.some((l) => l.includes("Folder in the monorepo") && l.includes("non recommandée")), body.summary);
+  assert.equal((await alice.state()).session.summary, body.summary);
+});
+
+test("the Summary stays in English when the language is English", async () => {
+  await claude.startSession("Arena");
+  const { body } = await claude.end();
+  assert.ok(body.summary.startsWith("# Summary: Arena"));
+});
+
+test("the shared catalogue is served to browsers and loads in Node without browser globals", async () => {
+  const response = await fetch(server.url + "/i18n.js");
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get("content-type"), /javascript/);
+  assert.ok((await response.text()).includes("export const catalogues"));
+  const { catalogues, t } = await import("../public/i18n.js");
+  assert.ok(Object.keys(catalogues).length >= 2);
+  assert.equal(typeof t("noun.abstention", {}, Object.keys(catalogues)[0]), "string");
 });

@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Entry point: starts the server and prints the Player and Facilitator URLs.
 // Variables: GRILL_ARENA_PORT (4242), GRILL_ARENA_DIR (<repository>/sessions),
-// GRILL_ARENA_PUBLIC_URL (URL of a tunnel to the port, shown to Players instead of the local addresses).
+// GRILL_ARENA_PUBLIC_URL (URL of a tunnel to the port, shown to Players instead of the local addresses),
+// GRILL_LANG (initial interface language of new Sessions: en or fr; anything else means en).
 import { randomBytes } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { networkInterfaces } from "node:os";
@@ -21,7 +22,7 @@ const addresses = Object.values(networkInterfaces())
   .map((i) => i.address);
 const playerUrls = computePlayerUrls({ port, addresses, publicUrl: process.env.GRILL_ARENA_PUBLIC_URL });
 
-const server = await start({ port, dir, token, playerUrls });
+const server = await start({ port, dir, token, playerUrls, language: process.env.GRILL_LANG });
 
 // The token is also written to disk, readable by the user only,
 // so that the skill finds it when the server is already running.

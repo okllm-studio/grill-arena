@@ -1,6 +1,7 @@
 // Session: in-memory state of a multiplayer grilling (Players, Steps, Votes, Comments).
 import { randomUUID } from "node:crypto";
-import { decide, gains, DEFAULT_SCALE } from "./arbitration.js";
+import { t, plural, DEFAULT_LANGUAGE, catalogues } from "../public/i18n.js";
+import { decide, gains, consensusLevel, stepConsensus, DEFAULT_SCALE } from "./arbitration.js";
 
 /** Request refused by a rule of the Session; `httpStatus` is the HTTP code to return. */
 export class Refusal extends Error {
@@ -11,8 +12,10 @@ export class Refusal extends Error {
   }
 }
 
+const isSupportedLanguage = (language) => typeof language === "string" && Object.hasOwn(catalogues, language);
+
 export class Session {
-  constructor({ title, prompt = "", scale = DEFAULT_SCALE, startedAt = Date.now() }) {
+  constructor({ title, prompt = "", scale = DEFAULT_SCALE, startedAt = Date.now(), language }) {
     this.id = randomUUID();
     this.startedAt = startedAt;
     this.scale = scale;
@@ -27,6 +30,8 @@ export class Session {
     this.liveDistribution = false;
     /** Ids of the Players the Facilitator appointed to open and close Steps in their place. */
     this.coFacilitators = [];
+    /** Interface language of the Session, never locked; an unsupported initial value falls back to English. */
+    this.language = isSupportedLanguage(language) ? language : DEFAULT_LANGUAGE;
   }
 
   /** `resume`: a nickname already taken returns its Player instead of being refused. Returns `{player, created}`. */
@@ -52,6 +57,12 @@ export class Session {
   configure({ liveDistribution }) {
     if (this.promptLocked) throw new Refusal(409, "Setting locked: Step 1 is open");
     this.liveDistribution = liveDistribution === true;
+  }
+
+  /** Changes the interface language; unlike the other settings, it is never locked. */
+  setLanguage(language) {
+    if (!isSupportedLanguage(language)) throw new Refusal(400, "Unsupported language");
+    this.language = language;
   }
 
   /** Replaces the initial prompt, shown to Players until it is locked. */
@@ -178,8 +189,14 @@ export class Session {
     return {
       step: { id: step.id, number: step.number },
       questions: step.questions.map((q) => this.questionResult(step, q)),
+      consensus: this.stepConsensus(step),
       scoreboard: this.scoreboard(),
     };
+  }
+
+  /** Consensus figures of a closed Step. */
+  stepConsensus(step) {
+    return stepConsensus(step.questions.map((q) => consensusLevel(step.outcomes[q.id])));
   }
 
   questionResult(step, question) {
@@ -191,6 +208,7 @@ export class Session {
       status: outcome.status,
       ...(outcome.status === "selected" && { selected: outcome.selected }),
       ...(outcome.split && { split: true }),
+      ...(consensusLevel(outcome) && { consensus: consensusLevel(outcome) }),
       distribution: outcome.distribution,
       abstentions: this.players.filter((p) => !(p.id in votes)).length,
       comments: this.players
@@ -263,29 +281,33 @@ export class Session {
   end() {
     if (this.currentStep && this.currentStep.state !== "closed") throw new Refusal(409, "A Step is not closed");
     this.ended = true;
-    return this.summary();
+    return this.summary(this.language);
   }
 
-  summary() {
-    const lines = [`# Summary: ${this.title}`, ""];
+  /** Summary as Markdown; its fixed skeleton comes from the translation catalogue. */
+  summary(lang = DEFAULT_LANGUAGE) {
+    const lines = [t("summary.title", { title: this.title }, lang), ""];
     for (const step of this.steps.filter((s) => s.state === "closed")) {
-      lines.push(`## Step ${step.number}`, "");
+      lines.push(t("summary.step", { number: step.number }, lang), "");
       for (const q of step.questions) {
         const outcome = step.outcomes[q.id];
-        const heading = `**Q${q.number} · ${q.title}**${q.reaskOf ? ` (re-asked from Q${this.question(q.reaskOf).number})` : ""}`;
+        const reasked = q.reaskOf ? ` ${t("summary.reaskedFrom", { number: this.question(q.reaskOf).number }, lang)}` : "";
+        const heading = t("summary.questionHeading", { number: q.number, title: q.title }, lang) + reasked;
         if (outcome.status === "to_reask") {
-          lines.push(`- ${heading}: to re-ask${outcome.split ? " (split vote)" : ""}`);
+          lines.push(`- ${heading}: ${t("summary.toReask", {}, lang)}${outcome.split ? ` ${t("summary.splitVote", {}, lang)}` : ""}`);
           continue;
         }
-        const label = q.options.find((o) => o.id === outcome.selected).label;
-        const nature = outcome.selected === q.recommended ? "recommended" : "not recommended";
+        const option = q.options.find((o) => o.id === outcome.selected);
+        const label = `${option.id}. ${option.label}`;
+        const nature = t(outcome.selected === q.recommended ? "summary.recommended" : "summary.notRecommended", {}, lang);
         lines.push(`- ${heading}: ${label} (${nature})`);
       }
       lines.push("");
     }
-    lines.push("## Scoreboard", "");
+    lines.push(t("summary.scoreboard", {}, lang), "");
     this.scoreboard().forEach((row, i) => {
-      lines.push(`${i + 1}. ${row.nickname}: ${row.total} (${plural(row.points, "Point")})`);
+      const points = plural(row.points, "noun.Point", lang);
+      lines.push(t("summary.scoreRow", { rank: i + 1, nickname: row.nickname, total: row.total, points }, lang));
     });
     return lines.join("\n") + "\n";
   }
@@ -306,8 +328,8 @@ export class Session {
 
   /** Complete state, for Storage. */
   toJSON() {
-    const { id, title, prompt, startedAt, scale, players, steps, ended, statisticsPublished, liveDistribution, coFacilitators } = this;
-    return { id, title, prompt, startedAt, scale, players, steps, ended, statisticsPublished, liveDistribution, coFacilitators };
+    const { id, title, prompt, startedAt, scale, players, steps, ended, statisticsPublished, liveDistribution, coFacilitators, language } = this;
+    return { id, title, prompt, startedAt, scale, players, steps, ended, statisticsPublished, liveDistribution, coFacilitators, language };
   }
 
   static restore(data) {
@@ -324,9 +346,10 @@ export class Session {
         ...((!this.promptLocked || facilitator) && { prompt: this.prompt ?? "" }),
         promptLocked: this.promptLocked,
         liveDistribution: this.liveDistribution === true,
+        language: isSupportedLanguage(this.language) ? this.language : DEFAULT_LANGUAGE,
         statisticsPublished: this.statisticsPublished === true,
         ended: this.ended,
-        ...(this.ended && { summary: this.summary() }),
+        ...(this.ended && { summary: this.summary(this.language) }),
       },
       players: this.players.length,
       coFacilitator: this.isCoFacilitator(playerId),
@@ -344,6 +367,7 @@ export class Session {
         remaining: step.remaining,
         state: step.state,
         open: step.state === "open",
+        ...(step.state === "closed" && { consensus: this.stepConsensus(step) }),
         questions: (step.state === "pending" ? [] : step.questions).map((q) => {
           const voters = Object.keys(step.votes[q.id]).length;
           return {
@@ -371,6 +395,7 @@ export class Session {
         .map((s) => ({
           id: s.id,
           number: s.number,
+          consensus: this.stepConsensus(s),
           questions: s.questions.map((q) => ({
             id: q.id,
             number: q.number,
@@ -410,8 +435,4 @@ function validateQuestions(questions) {
 function numberQuestions(questions, previousSteps) {
   const already = previousSteps.reduce((n, s) => n + s.questions.length, 0);
   return questions.map((q, i) => ({ ...q, number: already + i + 1 }));
-}
-
-function plural(n, word) {
-  return `${n} ${n === 1 ? word : word + "s"}`;
 }

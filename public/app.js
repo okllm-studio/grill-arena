@@ -263,7 +263,7 @@ function renderStep() {
       : "";
 
   if (session.ended) {
-    el("content").innerHTML = podium();
+    el("content").innerHTML = endCard();
   } else if (!player()) {
     el("content").innerHTML = prompt + joinForm();
   } else if (!s) {
@@ -418,10 +418,11 @@ function renderResults() {
     : `<div class="card">No Step has been closed yet.</div>`;
 }
 
-// --- Scoreboard, statistics, podium ----------------------------------------------------
+// --- Scoreboard and statistics ----------------------------------------------------
 
 function renderScoreboard() {
-  const available = Boolean(state?.scoreboard);
+  // Once the Session has ended, the end-of-Session card shows the Scoreboard: no button, no panel.
+  const available = Boolean(state?.scoreboard) && !state.session?.ended;
   el("scoreboard-button").hidden = !available;
   const visible = available && scoreboardOpen;
   el("scoreboard").hidden = !visible;
@@ -448,14 +449,10 @@ function scoreboardHtml() {
     <th class="num">Votes</th><th class="num">Comments</th><th class="num">Abstentions</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
-function podium() {
-  const [p1, p2, p3] = state.scoreboard ?? [];
-  const suffix = { 1: "st", 2: "nd", 3: "rd" };
-  const place = (l, rank) =>
-    l ? `<div class="place p${rank}"><strong>${escapeHtml(l.nickname)}</strong>${plural(l.total, "pt")}<br />${rank}${suffix[rank]}</div>` : "";
+/** End-of-Session card: the Scoreboard (only if the server sent it, i.e. published) shown once, then the Summary. */
+function endCard() {
   return `<div class="card"><h2>End of the Session</h2>
-    <div class="podium">${place(p2, 2)}${place(p1, 1)}${place(p3, 3)}</div>
-    <div class="scroll">${state.scoreboard ? scoreboardHtml() : ""}</div></div>
+    ${state.scoreboard ? scoreboardHtml() : ""}</div>
     ${state.session.summary ? `<article class="card body-text">${marked.parse(state.session.summary)}</article>` : ""}`;
 }
 
@@ -573,10 +570,13 @@ function renderFacilitator() {
     const setting = `<h3>Vote distribution</h3>
       <label><input type="checkbox" id="live-distribution" style="width:auto" ${session.liveDistribution ? "checked" : ""} ${locked ? "disabled" : ""} />
         Show the live distribution, once half of the Players have voted${locked ? " (locked since the Opening of Step 1)" : ""}</label>`;
-    const publication = `<h3>Scoreboard and statistics</h3>
+    // Once the Session has ended, the end-of-Session page carries the Scoreboard: no block here.
+    const publication = session.ended
+      ? ""
+      : `<h3>Scoreboard and statistics</h3>
       ${state.scoreboard ? scoreboardHtml() : ""}
-      <div class="actions"><button type="button" id="publish-stats" ${session.statisticsPublished || session.ended ? "disabled" : ""}>
-        ${session.statisticsPublished || session.ended ? "Statistics published" : "Publish the statistics to Players"}</button></div>`;
+      <div class="actions"><button type="button" id="publish-stats" ${session.statisticsPublished ? "disabled" : ""}>
+        ${session.statisticsPublished ? "Statistics published" : "Publish the statistics to Players"}</button></div>`;
     const participants = (state.participants ?? []).length
       ? `<h3>Co-facilitators</h3>
          <p class="counter">A Co-facilitator can open and close Steps in your place. Be careful: anyone who takes back their nickname gets their rights.</p>

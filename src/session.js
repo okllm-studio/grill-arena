@@ -128,6 +128,10 @@ export class Session {
     if (!question) throw new Refusal(404, "Unknown question");
     this.player(playerId);
     if (option === null) throw new Refusal(400, "A null option is not an answer: send abstain: true to abstain");
+    if (abstain !== undefined && abstain !== true) throw new Refusal(400, "abstain must be true");
+    if (option === undefined && abstain === undefined && comment === undefined) {
+      throw new Refusal(400, "Nothing to record: send an option, abstain: true or a comment");
+    }
     if (option !== undefined && abstain === true) throw new Refusal(400, "Choose an option or abstain, not both");
     if (option !== undefined && !question.options.some((o) => o.id === option)) {
       throw new Refusal(400, "Unknown option");

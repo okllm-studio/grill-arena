@@ -113,9 +113,7 @@ Four frictions came out of real Sessions:
 - Per-Player language choice (to reconsider only if the need appears).
 - Languages other than English and Français.
 - Translating the content produced by Claude, the Initial prompt, Comments, API error messages or `GLOSSARY.md`.
-- Distinguishing a deliberate Abstention from "not answered yet" in the Player view.
 - Consensus statistics over the whole Session (for example "x Steps out of y consensual") on the end page.
-- Any change to scoring rules or to the Points earned.
 - A server-side refusal of Option identifiers that are not letters.
 
 ## Further Notes

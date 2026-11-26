@@ -241,6 +241,18 @@ test("an Abstention is an answer: it counts as answered, even without a prior Vo
   assert.deepEqual([q1.myVote, q1.myAbstention, q1.voters], ["A", false, 2]);
 });
 
+test("an answer must carry an option, an Abstention or a Comment: anything else is refused", async () => {
+  await claude.startSession();
+  const { body: step } = await claude.publishOpen(stepFixture());
+  const alice = await joinAs("alice");
+
+  assert.equal((await alice.answer(step.id, "q1", {})).status, 400);
+  assert.equal((await alice.answer(step.id, "q1", { abstain: false })).status, 400);
+  assert.equal((await alice.answer(step.id, "q1", { abstain: "yes" })).status, 400);
+  assert.equal((await alice.answer(step.id, "q1", { comment: "just a Comment" })).status, 200);
+  assert.equal((await alice.state()).step.questions[0].voters, 0);
+});
+
 test("a Player cannot go back to no answer: a null option is refused and the answer is kept", async () => {
   await claude.startSession();
   const { body: step } = await claude.publishOpen(stepFixture());

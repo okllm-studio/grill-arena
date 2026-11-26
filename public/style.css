@@ -101,6 +101,7 @@ input, textarea, select {
 }
 .option { min-height: 44px; }
 .option input { width: auto; margin-top: 4px; min-width: 20px; min-height: 20px; }
+button.secondary.chosen { border-color: var(--accent); background: var(--accent-soft); }
 .option.chosen { border-color: var(--accent); background: var(--accent-soft); }
 .badge { font-size: 0.75rem; border-radius: 999px; padding: 1px 8px; margin-left: 6px; white-space: nowrap; }
 .badge.recommended { background: var(--accent-soft); color: var(--accent); }

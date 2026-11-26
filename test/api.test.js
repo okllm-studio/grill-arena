@@ -1117,6 +1117,8 @@ test("starting a new Session releases the requests waiting for a result", async 
   await claude.startSession();
   const { body: step } = await claude.publishOpen(stepFixture());
   const waiting = claude.result(step.id, { wait: true });
+  // Nothing observable tells when the server has registered the request: leave it time to arrive.
+  await new Promise((r) => setTimeout(r, 100));
 
   await claude.startSession("Another session");
 

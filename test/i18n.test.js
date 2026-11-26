@@ -41,6 +41,12 @@ test("in French, 0 and 1 take the singular", () => {
   assert.equal(plural(2, "noun.Point", "fr"), "2 points");
 });
 
+test("a negative count takes the form of its absolute value", () => {
+  assert.equal(plural(-1, "noun.Point", "en"), "-1 Point");
+  assert.equal(plural(-2, "noun.Point", "en"), "-2 Points");
+  assert.equal(plural(-1, "noun.Point", "fr"), "-1 point");
+});
+
 test("plural picks the singular or plural form of a noun", () => {
   assert.equal(plural(1, "noun.Point"), "1 Point");
   assert.equal(plural(0, "noun.Point"), "0 Points");

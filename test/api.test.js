@@ -1,6 +1,6 @@
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, readdir, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, readdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { start } from "../src/server.js";
@@ -202,7 +202,7 @@ test("before closing, a Player sees only their own Vote and the number of voters
   assert.equal(aliceQ1.myComment, "B for me");
 });
 
-test("a Player can change their Vote, go back to Abstention and erase their Comment", async () => {
+test("a Player can change their Vote and erase their Comment", async () => {
   await claude.startSession();
   const { body: step } = await claude.publishOpen(stepFixture());
   const alice = await joinAs("alice");
@@ -212,19 +212,57 @@ test("a Player can change their Vote, go back to Abstention and erase their Comm
   let [q1] = (await alice.state()).step.questions;
   assert.deepEqual([q1.myVote, q1.myComment, q1.voters], ["A", "B", 1]);
 
-  await alice.answer(step.id, "q1", { option: null, comment: "" });
+  await alice.answer(step.id, "q1", { comment: "" });
   [q1] = (await alice.state()).step.questions;
-  assert.deepEqual([q1.myVote, q1.myComment, q1.voters], [null, "", 0]);
+  assert.deepEqual([q1.myVote, q1.myComment, q1.voters], ["A", "", 1]);
 });
 
-test("at closing, Claude receives the selected option, the distribution, the Comments and the Scoreboard", async () => {
+test("an Abstention is an answer: it counts as answered, even without a prior Vote, and is not a Vote", async () => {
   await claude.startSession();
   const { body: step } = await claude.publishOpen(stepFixture());
   const alice = await joinAs("alice");
   const bob = await joinAs("bob");
+  await joinAs("carol");
+
+  assert.equal((await alice.answer(step.id, "q1", { abstain: true })).status, 200);
+  let [q1] = (await alice.state()).step.questions;
+  assert.deepEqual([q1.myVote, q1.myAbstention, q1.voters], [null, true, 1]);
+
+  // a Vote then counts once, and an Abstention replaces it without lowering the counter
+  await bob.answer(step.id, "q1", { option: "B" });
+  assert.equal((await bob.state()).step.questions[0].voters, 2);
+  await bob.answer(step.id, "q1", { abstain: true });
+  [q1] = (await bob.state()).step.questions;
+  assert.deepEqual([q1.myVote, q1.myAbstention, q1.voters], [null, true, 2]);
+
+  // and back to an Option: the Abstention is replaced
+  await bob.answer(step.id, "q1", { option: "A" });
+  [q1] = (await bob.state()).step.questions;
+  assert.deepEqual([q1.myVote, q1.myAbstention, q1.voters], ["A", false, 2]);
+});
+
+test("a Player cannot go back to no answer: a null option is refused and the answer is kept", async () => {
+  await claude.startSession();
+  const { body: step } = await claude.publishOpen(stepFixture());
+  const alice = await joinAs("alice");
+  await alice.answer(step.id, "q1", { option: "B" });
+
+  assert.equal((await alice.answer(step.id, "q1", { option: null })).status, 400);
+  assert.equal((await alice.answer(step.id, "q1", { option: "B", abstain: true })).status, 400);
+  const [q1] = (await alice.state()).step.questions;
+  assert.deepEqual([q1.myVote, q1.voters], ["B", 1]);
+});
+
+test("at closing, Claude receives the selected option, the distribution, the Comments and the Scoreboard", async () => {
+  await claude.startSession();
+  const alice = await joinAs("alice");
+  const bob = await joinAs("bob");
   const carol = await joinAs("carol");
-  await joinAs("dan"); // abstains without saying anything
+  const dan = await joinAs("dan");
+  await joinAs("erin"); // answers nothing: a Non-answer
+  const { body: step } = await claude.publishOpen(stepFixture());
   await alice.answer(step.id, "q1", { option: "B", comment: "the monorepo is enough" });
+  await dan.answer(step.id, "q1", { abstain: true });
   await bob.answer(step.id, "q1", { option: "B" });
   await carol.answer(step.id, "q1", { option: "A" });
 
@@ -240,6 +278,7 @@ test("at closing, Claude receives the selected option, the distribution, the Com
       consensus: "near_consensus",
       distribution: { A: 1, B: 2 },
       abstentions: 1,
+      nonAnswers: 1,
       comments: [{ nickname: "alice", text: "the monorepo is enough" }],
     },
   ]);
@@ -248,12 +287,123 @@ test("at closing, Claude receives the selected option, the distribution, the Com
     { nickname: "bob", points: 1, total: 1, stepGain: 1 },
     { nickname: "carol", points: 0, total: 0, stepGain: 0 },
     { nickname: "dan", points: 0, total: 0, stepGain: 0 },
+    { nickname: "erin", points: -1, total: -1, stepGain: -1 },
   ]);
 
   const carolView = await carol.state();
   assert.equal(carolView.step.open, false);
   assert.deepEqual(carolView.step.questions[0].result, result.questions[0]);
   assert.deepEqual((await facilitator.state()).scoreboard, result.scoreboard);
+});
+
+test("an Abstention costs nothing, a Non-answer costs a Point, and the total can be negative", async () => {
+  await claude.startSession();
+  const alice = await joinAs("alice");
+  const bob = await joinAs("bob");
+  await joinAs("carol");
+  const { body: step } = await claude.publishOpen(stepFixture());
+  await alice.answer(step.id, "q1", { option: "A" });
+  await bob.answer(step.id, "q1", { abstain: true });
+
+  await facilitator.close(step.id);
+  const { body: result } = await claude.result(step.id);
+  assert.deepEqual(result.scoreboard, [
+    { nickname: "alice", points: 1, total: 1, stepGain: 1 },
+    { nickname: "bob", points: 0, total: 0, stepGain: 0 },
+    { nickname: "carol", points: -1, total: -1, stepGain: -1 },
+  ]);
+  assert.equal(result.questions[0].abstentions, 1);
+  assert.equal(result.questions[0].nonAnswers, 1);
+});
+
+test("a lone expert Vote among Abstentions selects their Option and is not assessed for Consensus", async () => {
+  await claude.startSession();
+  const { body: step } = await claude.publishOpen(stepFixture());
+  const alice = await joinAs("alice");
+  const bob = await joinAs("bob");
+  const carol = await joinAs("carol");
+  await alice.answer(step.id, "q1", { option: "B" });
+  await bob.answer(step.id, "q1", { abstain: true });
+  await carol.answer(step.id, "q1", { abstain: true });
+
+  await facilitator.close(step.id);
+  const { body: result } = await claude.result(step.id);
+  const [q1] = result.questions;
+  assert.equal(q1.selected, "B");
+  assert.equal(q1.consensus, undefined);
+  assert.deepEqual(result.consensus, { assessed: 0, atConsensus: 0 });
+  assert.deepEqual(q1.distribution, { A: 0, B: 1 });
+  assert.equal(q1.abstentions, 2);
+});
+
+test("with no Vote cast, the Recommended option is selected and the silent Players still pay the Penalty", async () => {
+  await claude.startSession();
+  const alice = await joinAs("alice");
+  await joinAs("bob");
+  const { body: step } = await claude.publishOpen(stepFixture());
+  await alice.answer(step.id, "q1", { abstain: true });
+
+  await facilitator.close(step.id);
+  const { body: result } = await claude.result(step.id);
+  assert.equal(result.questions[0].selected, "A");
+  assert.deepEqual(result.scoreboard.map((r) => [r.nickname, r.total]), [["alice", 0], ["bob", -1]]);
+});
+
+test("no Penalty on a Question to re-ask, whether split or re-asked by the Facilitator", async () => {
+  await claude.startSession();
+  const step1 = stepFixture();
+  step1.questions.push({ ...step1.questions[0], id: "q2" });
+  const { body: step } = await claude.publishOpen(step1);
+  const alice = await joinAs("alice");
+  const bob = await joinAs("bob");
+  await joinAs("carol");
+  await alice.answer(step.id, "q1", { option: "A" });
+  await bob.answer(step.id, "q1", { option: "B" }); // q1: split vote
+  await alice.answer(step.id, "q2", { option: "A" });
+
+  await facilitator.close(step.id, { toReask: ["q2"] });
+  const { body: result } = await claude.result(step.id);
+  assert.deepEqual(result.questions.map((q) => q.status), ["to_reask", "to_reask"]);
+  assert.deepEqual(result.scoreboard.map((r) => r.total), [0, 0, 0]);
+});
+
+test("a Player who joined after the Opening pays no Penalty for that Step, but does for the next one", async () => {
+  await claude.startSession();
+  const { body: step } = await claude.publishOpen(stepFixture());
+  const alice = await joinAs("alice");
+  await alice.answer(step.id, "q1", { option: "A" });
+  const late = await joinAs("late");
+
+  await facilitator.close(step.id);
+  let { body: result } = await claude.result(step.id);
+  assert.equal(result.scoreboard.find((r) => r.nickname === "late").total, 0);
+  assert.equal(result.questions[0].nonAnswers, 0);
+
+  const { body: step2 } = await claude.publishOpen(stepFixture(2));
+  await alice.answer(step2.id, "q1-2", { option: "A" });
+  await facilitator.close(step2.id);
+  ({ body: result } = await claude.result(step2.id));
+  assert.equal(result.scoreboard.find((r) => r.nickname === "late").total, -1);
+  assert.equal(result.questions[0].nonAnswers, 1);
+  void late;
+});
+
+test("the statistics tell Abstentions and Non-answers apart", async () => {
+  await claude.startSession();
+  const alice = await joinAs("alice");
+  const bob = await joinAs("bob");
+  await joinAs("carol");
+  const { body: step } = await claude.publishOpen(stepFixture());
+  await alice.answer(step.id, "q1", { option: "A", comment: "yes" });
+  await bob.answer(step.id, "q1", { abstain: true });
+  await facilitator.close(step.id);
+
+  const { statistics } = (await claude.end()).body;
+  assert.deepEqual(statistics, [
+    { nickname: "alice", votes: 1, comments: 1, abstentions: 0, nonAnswers: 0 },
+    { nickname: "bob", votes: 0, comments: 0, abstentions: 1, nonAnswers: 0 },
+    { nickname: "carol", votes: 0, comments: 0, abstentions: 0, nonAnswers: 1 },
+  ]);
 });
 
 test("while the Step is open, the result without waiting says it is not closed", async () => {
@@ -459,7 +609,8 @@ test("a Player who arrives mid-Session starts at 0 and votes as soon as the Step
   assert.equal((await facilitator.state()).scoreboard.find((r) => r.nickname === "bob").total, 0);
   assert.equal((await bob.answer(s2.id, "q1-2", { option: "A" })).status, 200);
   const { body } = await facilitator.close(s2.id);
-  assert.deepEqual(body.scoreboard.map((r) => [r.nickname, r.total]), [["alice", 1], ["bob", 1]]);
+  // alice, present at the Opening of Step 2, answered nothing there: a Penalty; bob arrived after it: none
+  assert.deepEqual(body.scoreboard.map((r) => [r.nickname, r.total]), [["bob", 1], ["alice", 0]]);
 });
 
 test("at the end of the Session, Claude receives the Summary and Players see the Session ended", async () => {
@@ -489,7 +640,7 @@ test("at the end of the Session, Claude receives the Summary and Players see the
     "- **Q2 · Stack**: to re-ask",
     "## Scoreboard",
     "1. alice: 1 (1 Point)",
-    "2. bob: 0 (0 Points)",
+    "2. bob: -1 (-1 Point)",
   ]) {
     assert.ok(lines.includes(expected), `missing line: ${expected}\n${body.summary}`);
   }
@@ -589,10 +740,10 @@ test("the Scoreboard and statistics are hidden from Players during the Session, 
   assert.equal(aliceView.step.questions[0].result.selected, "A", "the Step's results stay public");
 
   const facilitatorView = await facilitator.state(alice.id);
-  assert.deepEqual(facilitatorView.scoreboard.map((r) => [r.nickname, r.total]), [["alice", 2], ["bob", 1]]);
+  assert.deepEqual(facilitatorView.scoreboard.map((r) => [r.nickname, r.total]), [["alice", 2], ["bob", 0]]);
   assert.deepEqual(facilitatorView.statistics, [
-    { nickname: "alice", votes: 2, comments: 1, abstentions: 0 },
-    { nickname: "bob", votes: 1, comments: 0, abstentions: 1 },
+    { nickname: "alice", votes: 2, comments: 1, abstentions: 0, nonAnswers: 0 },
+    { nickname: "bob", votes: 1, comments: 0, abstentions: 0, nonAnswers: 1 },
   ]);
 });
 
@@ -604,7 +755,7 @@ test("at the end of the Session, the Scoreboard and statistics are published to 
   await facilitator.close(step.id);
 
   const { body: end } = await claude.end();
-  assert.deepEqual(end.statistics, [{ nickname: "alice", votes: 1, comments: 0, abstentions: 0 }]);
+  assert.deepEqual(end.statistics, [{ nickname: "alice", votes: 1, comments: 0, abstentions: 0, nonAnswers: 0 }]);
   const view = await alice.state();
   assert.deepEqual(view.statistics, end.statistics);
   assert.deepEqual(view.scoreboard.map((r) => [r.nickname, r.total]), [["alice", 1]]);
@@ -621,7 +772,7 @@ test("the Facilitator can publish the statistics before the end of the Session",
   assert.equal((await request("POST", "/api/session/statistics")).status, 401);
   assert.equal((await request("POST", "/api/session/statistics", { token: TOKEN })).status, 200);
   const view = await alice.state();
-  assert.deepEqual(view.statistics, [{ nickname: "alice", votes: 1, comments: 0, abstentions: 0 }]);
+  assert.deepEqual(view.statistics, [{ nickname: "alice", votes: 1, comments: 0, abstentions: 0, nonAnswers: 0 }]);
   assert.deepEqual(view.scoreboard.map((r) => [r.nickname, r.total]), [["alice", 1]]);
 });
 
@@ -706,6 +857,62 @@ test("a Co-facilitator opens and closes Steps, an ordinary Player cannot", async
   );
 });
 
+test("Abstentions count toward the live distribution threshold but never appear in it", async () => {
+  await claude.startSession();
+  const [alice, bob] = [await joinAs("alice"), await joinAs("bob")];
+  await joinAs("carol");
+  await joinAs("dan");
+  await request("PUT", "/api/session/live-distribution", { body: { enabled: true }, token: TOKEN });
+  const { body: step } = await claude.publishOpen(stepFixture());
+
+  await alice.answer(step.id, "q1", { abstain: true });
+  assert.equal((await bob.state()).step.questions[0].distribution, undefined, "1 answer out of 4");
+  await bob.answer(step.id, "q1", { option: "B" });
+  assert.deepEqual((await bob.state()).step.questions[0].distribution, { A: 0, B: 1 }, "2 answers out of 4");
+});
+
+test("after a restart, an Abstention is kept and the Players present at the Opening still pay their Penalty", async () => {
+  await claude.startSession();
+  const alice = await joinAs("alice");
+  await joinAs("bob");
+  const { body: step } = await claude.publishOpen(stepFixture());
+  await alice.answer(step.id, "q1", { abstain: true });
+  const late = await joinAs("late");
+  void late;
+
+  await server.close();
+  server = await start({ port: 0, dir, token: TOKEN });
+
+  const [q1] = (await alice.state()).step.questions;
+  assert.deepEqual([q1.myAbstention, q1.voters], [true, 1]);
+  const { body } = await facilitator.close(step.id);
+  assert.deepEqual(body.scoreboard.map((r) => [r.nickname, r.total]), [["alice", 0], ["late", 0], ["bob", -1]]);
+});
+
+test("a Session saved before Abstentions existed still loads: its missing answers are Non-answers", async () => {
+  await claude.startSession();
+  const alice = await joinAs("alice");
+  await joinAs("bob");
+  const { body: step } = await claude.publishOpen(stepFixture());
+  await alice.answer(step.id, "q1", { option: "A" });
+
+  await server.close();
+  for (const file of (await readdir(dir)).filter((f) => f.endsWith(".json"))) {
+    const data = JSON.parse(await readFile(join(dir, file), "utf8"));
+    for (const st of data.steps) {
+      delete st.abstentions;
+      delete st.present;
+    }
+    await writeFile(join(dir, file), JSON.stringify(data));
+  }
+  server = await start({ port: 0, dir, token: TOKEN });
+
+  assert.equal((await alice.state()).step.questions[0].voters, 1);
+  const { body } = await facilitator.close(step.id);
+  assert.equal(body.questions[0].nonAnswers, 1);
+  assert.deepEqual(body.scoreboard.map((r) => [r.nickname, r.total]), [["alice", 1], ["bob", -1]]);
+});
+
 test("a Co-facilitator sees the Scoreboard and statistics, but cannot set the prompt, the live distribution or publication", async () => {
   await claude.startSession();
   const alice = await joinAs("alice");
@@ -717,7 +924,7 @@ test("a Co-facilitator sees the Scoreboard and statistics, but cannot set the pr
 
   assert.equal((await alice.state()).scoreboard, undefined);
   const bobView = await bob.state();
-  assert.deepEqual(bobView.scoreboard.map((r) => [r.nickname, r.total]), [["alice", 1], ["bob", 0]]);
+  assert.deepEqual(bobView.scoreboard.map((r) => [r.nickname, r.total]), [["alice", 1], ["bob", -1]]);
   assert.equal(bobView.statistics.length, 2);
   assert.equal(bobView.participants, undefined, "the appointment list stays reserved to the Facilitator");
 
@@ -1038,8 +1245,8 @@ test("the full Summary text is pinned: skeleton, outcomes, re-asks and Scoreboar
       "",
       "## Scoreboard",
       "",
-      "1. alice: 0 (0 Points)",
-      "2. bob: 0 (0 Points)",
+      "1. alice: -1 (-1 Point)",
+      "2. bob: -1 (-1 Point)",
       "",
     ].join("\n"),
   );

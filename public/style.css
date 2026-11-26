@@ -154,3 +154,4 @@ details.question-result[open] > summary { margin-bottom: 8px; }
 .consensus-banner { font-weight: 600; border-radius: 8px; padding: 6px 10px; margin: 0 0 8px; }
 .consensus-banner.consensual { color: #15803d; background: #dcfce7; }
 .consensus-banner.mixed { color: #9a3412; background: #ffedd5; }
+.penalty { color: var(--accent); font-weight: 600; }

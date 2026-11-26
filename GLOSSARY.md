@@ -36,7 +36,7 @@ _Avoid_: choice, proposal
 The Option Claude advises for a Question; there is exactly one per Question.
 
 **Selected option**:
-The Option that settles the Question when the Step closes: the one with the most Votes, the recommended one if nobody voted, otherwise the one the Facilitator picks among the tied ones.
+The Option that settles the Question when the Step closes: the one with the most Votes, the recommended one if nobody voted (Abstentions and Non-answers alike), otherwise the one the Facilitator picks among the tied ones.
 _Avoid_: winning answer, decision
 
 **Question to re-ask**:
@@ -50,7 +50,7 @@ A tie between Options on a Question. It is not settled by the Recommended option
 A Question published by naming the Question to re-ask it takes over (`reaskOf`). A tie on a Re-asked question is not re-asked a second time: the Facilitator breaks it. A Question is taken over only once, and a Re-asked question can no longer be re-asked.
 
 **Consensus**:
-The state of a closed Question on which every voter chose the same Option. Abstentions are ignored, and a Question with fewer than two voters has no Consensus status at all (it is not assessed). Two other levels exist: **Near-consensus** (exactly one dissenting Vote against a majority of at least two, so a 1 against 1 is Divided) and **Divided** (anything else, including a Split vote and a Question to re-ask).
+The state of a closed Question on which every voter chose the same Option. Abstentions and Non-answers are ignored, and a Question with fewer than two voters has no Consensus status at all (it is not assessed). Two other levels exist: **Near-consensus** (exactly one dissenting Vote against a majority of at least two, so a 1 against 1 is Divided) and **Divided** (anything else, including a Split vote and a Question to re-ask).
 _Avoid_: agreement, unanimity
 
 **Consensual Step**:
@@ -62,7 +62,7 @@ The list of the Selected options of a Session, which feeds the spec.
 ### Participants
 
 **Player**:
-A participant identified by a nickname, who votes, abstains or comments.
+A participant identified by a nickname, who votes, abstains or comments (a Player who does none of these on a Question gives a Non-answer).
 _Avoid_: participant, user, voter
 
 **Facilitator**:
@@ -74,10 +74,14 @@ A Player the Facilitator appoints to open and close Steps in their place, for ex
 _Avoid_: deputy, moderator
 
 **Vote**:
-A Player's choice of an Option for a Question; it stays hidden until the Step closes.
+A Player's choice of an Option for a Question; it stays hidden until the Step closes. An Abstention is not a Vote.
 
 **Abstention**:
-A Player's choice not to Vote on a Question because they feel poorly placed to answer and would only bias the result; it earns nothing and costs nothing. A Player who has not answered when the Step closes counts as abstaining.
+A Player's explicit answer to a Question that they decline to vote on, because they feel poorly placed to answer and would only bias the result. It is an act: it counts as a response in the participation counter, but not in the result, the Consensus or the Points; it earns nothing and costs nothing. It can be changed to an Option, and an Option to an Abstention, until the Step closes.
+
+**Non-answer**:
+A Player present when a Step opened who, at its closing, has answered a Question neither with a Vote nor with an Abstention. It has no effect on the result or the Consensus, but it costs a Penalty.
+_Avoid_: silent abstention
 
 **Comment**:
 A free text a Player adds to a Question; it is passed on to Claude and does not count as a Vote.
@@ -86,6 +90,9 @@ A free text a Player adds to a Question; it is passed on to Claude and does not 
 
 **Point**:
 What a Player earns when their Vote is for the Selected option.
+
+**Penalty**:
+The Point a Player loses on a Question closed with a Selected option when they gave a Non-answer to it. A Question to re-ask costs no Penalty, and neither does a Step opened before the Player joined. A Player's total can be negative.
 
 **Scoreboard**:
 The running total of each Player's Points over the Session, published at the end of the Session.

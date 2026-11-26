@@ -88,6 +88,8 @@ export class Session {
       state: "pending",
       // questionId → playerId → optionId / text
       votes: Object.fromEntries(questions.map((q) => [q.id, {}])),
+      // questionId → playerId → true (explicit Abstentions, distinct from a Vote and from no answer)
+      abstentions: Object.fromEntries(questions.map((q) => [q.id, {}])),
       comments: Object.fromEntries(questions.map((q) => [q.id, {}])),
     };
     this.steps.push(step);
@@ -115,21 +117,28 @@ export class Session {
 
   /**
    * Sets, changes or removes a Player's Vote and/or Comment.
-   * `option: null` = Abstention; `comment: ""` = erased; absent field = unchanged.
+   * `abstain: true` = Abstention (replaces a Vote); `option` = Vote (replaces an Abstention);
+   * `comment: ""` = erased; absent field = unchanged. There is no way back to "no answer".
    */
-  answer(stepId, questionId, playerId, { option, comment }) {
+  answer(stepId, questionId, playerId, { option, abstain, comment }) {
     const step = this.step(stepId);
     if (step.state === "pending") throw new Refusal(409, "Step not open yet");
     if (step.state === "closed") throw new Refusal(409, "Step closed");
     const question = step.questions.find((q) => q.id === questionId);
     if (!question) throw new Refusal(404, "Unknown question");
     this.player(playerId);
-    if (option != null && !question.options.some((o) => o.id === option)) {
+    if (option === null) throw new Refusal(400, "A null option is not an answer: send abstain: true to abstain");
+    if (option !== undefined && abstain === true) throw new Refusal(400, "Choose an option or abstain, not both");
+    if (option !== undefined && !question.options.some((o) => o.id === option)) {
       throw new Refusal(400, "Unknown option");
     }
+    const abstentions = ((step.abstentions ??= {})[questionId] ??= {});
     if (option !== undefined) {
-      if (option === null) delete step.votes[questionId][playerId];
-      else step.votes[questionId][playerId] = option;
+      step.votes[questionId][playerId] = option;
+      delete abstentions[playerId];
+    } else if (abstain === true) {
+      delete step.votes[questionId][playerId];
+      abstentions[playerId] = true;
     }
     if (comment !== undefined) {
       if (comment === "") delete step.comments[questionId][playerId];
@@ -142,6 +151,8 @@ export class Session {
     const step = this.step(stepId);
     if (step.state !== "pending") throw new Refusal(409, "Step already open or closed");
     step.state = "open";
+    // Players present at the Opening: only they can be penalised for a Non-answer on this Step.
+    step.present = this.players.map((p) => p.id);
   }
 
   /**
@@ -175,7 +186,8 @@ export class Session {
     step.outcomes = outcomes;
     step.gains = {};
     for (const q of step.questions) {
-      for (const [playerId, g] of Object.entries(gains(q, step.votes[q.id], step.outcomes[q.id], this.scale))) {
+      const nonAnswers = this.nonAnswersIn(step, q);
+      for (const [playerId, g] of Object.entries(gains(q, step.votes[q.id], step.outcomes[q.id], this.scale, nonAnswers))) {
         const total = (step.gains[playerId] ??= { points: 0 });
         total.points += g.points;
       }
@@ -201,7 +213,6 @@ export class Session {
 
   questionResult(step, question) {
     const outcome = step.outcomes[question.id];
-    const votes = step.votes[question.id];
     return {
       id: question.id,
       number: question.number,
@@ -210,7 +221,8 @@ export class Session {
       ...(outcome.split && { split: true }),
       ...(consensusLevel(outcome) && { consensus: consensusLevel(outcome) }),
       distribution: outcome.distribution,
-      abstentions: this.players.filter((p) => !(p.id in votes)).length,
+      abstentions: Object.keys(this.abstainedIn(step, question)).length,
+      nonAnswers: this.nonAnswersIn(step, question).length,
       comments: this.players
         .filter((p) => p.id in step.comments[question.id])
         .map((p) => ({ nickname: p.nickname, text: step.comments[question.id][p.id] })),
@@ -228,6 +240,21 @@ export class Session {
         return { nickname: p.nickname, points, total: points, stepGain: last?.gains[p.id]?.points ?? 0 };
       })
       .sort((a, b) => b.total - a.total || a.nickname.localeCompare(b.nickname));
+  }
+
+  /** Explicit Abstentions of a Question: playerId → true. */
+  abstainedIn(step, question) {
+    return step.abstentions?.[question.id] ?? {};
+  }
+
+  /**
+   * Ids of the Players who answered a Question neither with a Vote nor with an Abstention: among those present
+   * at the Opening of the Step (a Step saved without that list concerns every Player).
+   */
+  nonAnswersIn(step, question) {
+    const abstained = this.abstainedIn(step, question);
+    const present = step.present ?? this.players.map((p) => p.id);
+    return present.filter((id) => !(id in step.votes[question.id]) && !(id in abstained));
   }
 
   /** Number of Votes per Option of a Question, without Abstentions. */
@@ -256,15 +283,16 @@ export class Session {
     return player;
   }
 
-  /** Participation statistics over the closed Steps: Votes, Comments and Abstentions per Player. */
+  /** Participation statistics over the closed Steps: Votes, Comments, Abstentions and Non-answers per Player. */
   statistics() {
     const closed = this.steps.filter((s) => s.state === "closed");
     return this.players.map((p) => {
-      const stats = { nickname: p.nickname, votes: 0, comments: 0, abstentions: 0 };
+      const stats = { nickname: p.nickname, votes: 0, comments: 0, abstentions: 0, nonAnswers: 0 };
       for (const s of closed) {
         for (const q of s.questions) {
           if (p.id in s.votes[q.id]) stats.votes += 1;
-          else stats.abstentions += 1;
+          else if (p.id in this.abstainedIn(s, q)) stats.abstentions += 1;
+          else if (this.nonAnswersIn(s, q).includes(p.id)) stats.nonAnswers += 1;
           if (p.id in s.comments[q.id]) stats.comments += 1;
         }
       }
@@ -369,7 +397,8 @@ export class Session {
         open: step.state === "open",
         ...(step.state === "closed" && { consensus: this.stepConsensus(step) }),
         questions: (step.state === "pending" ? [] : step.questions).map((q) => {
-          const voters = Object.keys(step.votes[q.id]).length;
+          const abstained = this.abstainedIn(step, q);
+          const voters = Object.keys(step.votes[q.id]).length + Object.keys(abstained).length;
           return {
             id: q.id,
             number: q.number,
@@ -380,6 +409,7 @@ export class Session {
             recommended: q.recommended,
             voters,
             myVote: step.votes[q.id][playerId] ?? null,
+            myAbstention: playerId in abstained,
             myComment: step.comments[q.id][playerId] ?? "",
             ...(step.state === "open" &&
               this.liveDistribution &&
@@ -403,6 +433,7 @@ export class Session {
             options: q.options,
             recommended: q.recommended,
             myVote: s.votes[q.id][playerId] ?? null,
+            myAbstention: playerId in this.abstainedIn(s, q),
             result: this.questionResult(s, q),
           })),
         })),

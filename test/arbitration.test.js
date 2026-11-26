@@ -86,6 +86,32 @@ test("a Question to re-ask earns nobody a Point", () => {
   });
 });
 
+test("a Non-answer costs a Penalty of one Point on a Question closed with a Selected option", () => {
+  const votes = { alice: "B", bob: "B", dan: "A" };
+  const outcome = decide(question, votes);
+  assert.deepEqual(gains(question, votes, outcome, DEFAULT_SCALE, ["carol"]), {
+    alice: { points: 1 },
+    bob: { points: 1 },
+    dan: { points: 0 },
+    carol: { points: -1 },
+  });
+});
+
+test("a Non-answer costs a Penalty even when nobody voted, and follows the Point scale", () => {
+  const outcome = decide(question, {});
+  assert.deepEqual(gains(question, {}, outcome, { point: 2 }, ["alice"]), { alice: { points: -2 } });
+});
+
+test("a Question to re-ask costs no Penalty", () => {
+  const split = decide(question, { alice: "A", bob: "B" });
+  assert.deepEqual(gains(question, { alice: "A", bob: "B" }, split, DEFAULT_SCALE, ["carol"]), {
+    alice: { points: 0 },
+    bob: { points: 0 },
+  });
+  const cancelled = decide(question, { alice: "A" }, { toReask: true });
+  assert.deepEqual(gains(question, { alice: "A" }, cancelled, DEFAULT_SCALE, ["carol"]), { alice: { points: 0 } });
+});
+
 test("the Point scale is configurable", () => {
   const votes = { alice: "C" };
   const outcome = decide(question, votes);

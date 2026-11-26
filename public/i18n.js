@@ -16,6 +16,8 @@ export const catalogues = {
     "noun.Question.other": "{n} Questions",
     "noun.abstention.one": "{n} abstention",
     "noun.abstention.other": "{n} abstentions",
+    "noun.nonAnswer.one": "{n} non-answer",
+    "noun.nonAnswer.other": "{n} non-answers",
 
     // --- Summary (built by the server) ---
     "summary.title": "# Summary: {title}",
@@ -46,7 +48,7 @@ export const catalogues = {
     "rules.2": "Votes stay hidden until the Step is closed; you can change yours until then.",
     "rules.3": "A Comment is passed on to Claude and can open new Questions; it does not count as a Vote.",
     "rules.4": "The selected Option is the one with the most Votes. With no Vote at all, it is the recommended one. On a split vote, the Question is settled verbally and Claude re-asks it.",
-    "rules.5": "You earn 1 Point if you voted for the selected Option. The Scoreboard and participation statistics are published at the end of the Session.",
+    "rules.5": "You earn 1 Point if you voted for the selected Option. If you answer a Question with neither a Vote nor an Abstention, you lose 1 Point once it is settled. Abstaining costs nothing. The Scoreboard and participation statistics are published at the end of the Session.",
     "rules.6": "When the Comments show that no Option fits, the Facilitator can also re-ask the Question in the next Step.",
 
     // --- Questions ---
@@ -59,7 +61,8 @@ export const catalogues = {
     "tooltip.split": "Split vote: to be settled verbally",
     "tooltip.toReask": "To re-ask",
     "tooltip.yourVote": "Your Vote: {option}",
-    "tooltip.noVote": "You did not vote.",
+    "tooltip.noVote": "You did not answer.",
+    "tooltip.abstained": "You abstained.",
 
     // --- "Current Step" tab ---
     "step.notStarted": "The Facilitator has not started the Session yet. This page will update by itself.",
@@ -81,7 +84,7 @@ export const catalogues = {
     "question.voted": "{voters}/{players} voted",
     "question.distribution": "Distribution: {distribution}",
     "question.commentLabel": "Comment (passed on to Claude, visible at closing)",
-    "question.voteSaved": "Vote saved, you can change it until the closing.",
+    "question.voteSaved": "Answer saved, you can change it until the closing.",
     "result.splitReask": "Split vote: to be settled verbally, Claude will re-ask this Question.",
     "result.reask": "To re-ask: Claude will rephrase this Question.",
 
@@ -92,11 +95,13 @@ export const catalogues = {
     "fold.level.unassessed": "Not assessed",
     "fold.reask": "to re-ask",
     "fold.abstentions": "abst.",
+    "fold.nonAnswers": "no ans.",
     "fold.comments": "Comments",
     "fold.consensualStep": "Consensual Step",
     "fold.unanimous": "{questions} out of {total} unanimous",
     "results.yourVote": "Your Vote: {option}",
-    "results.noVote": "You did not vote on this Question.",
+    "results.noVote": "You did not answer this Question.",
+    "results.abstained": "You abstained on this Question.",
     "results.title": "Results of Step {number}",
     "results.none": "No Step has been closed yet.",
 
@@ -109,6 +114,7 @@ export const catalogues = {
     "scoreboard.votes": "Votes",
     "scoreboard.comments": "Comments",
     "scoreboard.abstentions": "Abstentions",
+    "scoreboard.nonAnswers": "Non-answers",
     "end.title": "End of the Session",
 
     // --- Controls (Opening and closing) ---
@@ -171,6 +177,8 @@ export const catalogues = {
     "noun.Question.other": "{n} questions",
     "noun.abstention.one": "{n} abstention",
     "noun.abstention.other": "{n} abstentions",
+    "noun.nonAnswer.one": "{n} non-réponse",
+    "noun.nonAnswer.other": "{n} non-réponses",
 
     // --- Summary (built by the server) ---
     "summary.title": "# Synthèse : {title}",
@@ -201,7 +209,7 @@ export const catalogues = {
     "rules.2": "Les Votes restent cachés jusqu’à la clôture de l’Étape ; vous pouvez modifier le vôtre jusque-là.",
     "rules.3": "Un Commentaire est transmis à Claude et peut ouvrir de nouvelles Questions ; il ne compte pas comme un Vote.",
     "rules.4": "L’Option retenue est celle qui a le plus de Votes. Sans aucun Vote, c’est l’Option recommandée. En cas de vote partagé, la Question est tranchée à l’oral et Claude la repose.",
-    "rules.5": "Vous gagnez 1 point si vous avez voté pour l’Option retenue. Le Tableau des scores et les statistiques de participation sont publiés à la fin de la Session.",
+    "rules.5": "Vous gagnez 1 point si vous avez voté pour l’Option retenue. Si vous ne répondez à une Question ni par un Vote ni par une abstention, vous perdez 1 point une fois la Question tranchée. S’abstenir ne coûte rien. Le Tableau des scores et les statistiques de participation sont publiés à la fin de la Session.",
     "rules.6": "Quand les Commentaires montrent qu’aucune Option ne convient, l’Animateur peut aussi reposer la Question dans l’Étape suivante.",
 
     // --- Questions ---
@@ -214,7 +222,8 @@ export const catalogues = {
     "tooltip.split": "Vote partagé : à trancher à l’oral",
     "tooltip.toReask": "À reposer",
     "tooltip.yourVote": "Votre Vote : {option}",
-    "tooltip.noVote": "Vous n’avez pas voté.",
+    "tooltip.noVote": "Vous n’avez pas répondu.",
+    "tooltip.abstained": "Vous vous êtes abstenu.",
 
     // --- "Current Step" tab ---
     "step.notStarted": "L’Animateur n’a pas encore démarré la Session. Cette page se mettra à jour toute seule.",
@@ -236,7 +245,7 @@ export const catalogues = {
     "question.voted": "{voters}/{players} ont voté",
     "question.distribution": "Répartition : {distribution}",
     "question.commentLabel": "Commentaire (transmis à Claude, visible à la clôture)",
-    "question.voteSaved": "Vote enregistré, vous pouvez le modifier jusqu’à la clôture.",
+    "question.voteSaved": "Réponse enregistrée, vous pouvez la modifier jusqu’à la clôture.",
     "result.splitReask": "Vote partagé : à trancher à l’oral, Claude reposera cette Question.",
     "result.reask": "À reposer : Claude reformulera cette Question.",
 
@@ -247,11 +256,13 @@ export const catalogues = {
     "fold.level.unassessed": "Non évaluée",
     "fold.reask": "à reposer",
     "fold.abstentions": "abst.",
+    "fold.nonAnswers": "sans rép.",
     "fold.comments": "Commentaires",
     "fold.consensualStep": "Étape consensuelle",
     "fold.unanimous": "{questions} sur {total} unanimes",
     "results.yourVote": "Votre Vote : {option}",
-    "results.noVote": "Vous n’avez pas voté sur cette Question.",
+    "results.noVote": "Vous n’avez pas répondu à cette Question.",
+    "results.abstained": "Vous vous êtes abstenu sur cette Question.",
     "results.title": "Résultats de l’Étape {number}",
     "results.none": "Aucune Étape n’a encore été clôturée.",
 
@@ -264,6 +275,7 @@ export const catalogues = {
     "scoreboard.votes": "Votes",
     "scoreboard.comments": "Commentaires",
     "scoreboard.abstentions": "Abstentions",
+    "scoreboard.nonAnswers": "Non-réponses",
     "end.title": "Fin de la Session",
 
     // --- Controls (Opening and closing) ---
@@ -328,7 +340,8 @@ export function t(key, params = {}, lang = DEFAULT_LANGUAGE) {
 
 /** "1 Point", "2 Points": `noun` is a key prefix with `.one` and `.other` forms. */
 export function plural(n, noun, lang = DEFAULT_LANGUAGE) {
-  const singular = lang === "fr" ? n === 0 || n === 1 : n === 1;
+  const size = Math.abs(n);
+  const singular = lang === "fr" ? size <= 1 : size === 1;
   return t(`${noun}.${singular ? "one" : "other"}`, { n }, lang);
 }
 

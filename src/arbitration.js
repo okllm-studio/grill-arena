@@ -56,11 +56,16 @@ export function stepConsensus(levels) {
 export const DEFAULT_SCALE = Object.freeze({ point: 1 });
 
 /**
- * Gains of each voter on a decided Question. An Abstention does not appear.
+ * Gains of each Player on a decided Question. An Abstention does not appear.
+ * `nonAnswers`: ids of the Players who answered neither with a Vote nor with an Abstention; each of them
+ * pays a Penalty (one Point on the scale), unless the Question has no Selected option.
  * @returns {Record<string, {points: number}>}
  */
-export function gains(question, votes, outcome, scale = DEFAULT_SCALE) {
+export function gains(question, votes, outcome, scale = DEFAULT_SCALE, nonAnswers = []) {
   const result = {};
+  if (outcome.status === "selected") {
+    for (const playerId of nonAnswers) result[playerId] = { points: -scale.point };
+  }
   for (const [playerId, optionId] of Object.entries(votes)) {
     const won = outcome.status === "selected" && optionId === outcome.selected;
     result[playerId] = { points: won ? scale.point : 0 };

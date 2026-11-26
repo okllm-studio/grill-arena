@@ -154,7 +154,9 @@ function tooltipContent(q) {
         ? t("tooltip.split")
         : t("tooltip.toReask");
   const distribution = q.options.map((o) => `${escapeHtml(withLetter(o))}: ${r.distribution[o.id]}`).join(" · ");
-  const vote = q.myVote ? t("tooltip.yourVote", { option: escapeHtml(optionLabel(q, q.myVote)) }) : t("tooltip.noVote");
+  const vote = q.myVote
+    ? t("tooltip.yourVote", { option: escapeHtml(optionLabel(q, q.myVote)) })
+    : t(q.myAbstention ? "tooltip.abstained" : "tooltip.noVote");
   return `<strong>Q${q.number} · ${escapeHtml(q.title)}</strong><br>${escapeHtml(outcome)}<br>${distribution}<br>${vote}`;
 }
 
@@ -323,7 +325,7 @@ function joinForm() {
 function playerStatus(s) {
   let text;
   if (s.state === "closed") text = t("status.closed");
-  else if (s.questions.every((q) => q.myVote !== null)) {
+  else if (s.questions.every((q) => q.myVote !== null || q.myAbstention)) {
     text = t("status.answeredAll");
   } else text = t("status.vote");
   return `<p class="status" role="status">${text}</p>`;
@@ -373,14 +375,14 @@ function questionCard(step, q) {
     ${title}${body}
     <div class="options">${options}</div>
     <div class="actions">
-      <button type="button" class="secondary" data-abstain="${q.id}" ${q.myVote ? "" : "disabled"}>${t("question.abstain")}</button>
+      <button type="button" class="secondary ${q.myAbstention ? "chosen" : ""}" data-abstain="${q.id}" aria-pressed="${q.myAbstention}">${t("question.abstain")}</button>
       <span class="counter">${t("question.voted", { voters: q.voters, players: state.players })}</span>
     </div>
     ${distribution}
     <label for="comment-${q.id}" class="counter">${t("question.commentLabel")}</label>
     <textarea id="comment-${q.id}" data-comment="${q.id}" rows="2">${escapeHtml(comment)}</textarea>
     <p class="counter comment-status ${commentErrors.has(q.id) ? "comment-error" : ""}" data-comment-status="${q.id}" role="status">${commentStatus(q)}</p>
-    ${q.myVote ? `<p class="counter">${t("question.voteSaved")}</p>` : ""}
+    ${q.myVote || q.myAbstention ? `<p class="counter">${t("question.voteSaved")}</p>` : ""}
   </article>`;
 }
 
@@ -407,7 +409,7 @@ function questionResult(q) {
         .map((c) => `<li><strong>${escapeHtml(c.nickname)}</strong>: ${escapeHtml(c.text)}</li>`)
         .join("")}</ul>`
     : "";
-  return `${status}${bars}<p class="counter">${plural(r.abstentions, "noun.abstention")}</p>${comments}`;
+  return `${status}${bars}<p class="counter">${plural(r.abstentions, "noun.abstention")} · ${plural(r.nonAnswers, "noun.nonAnswer")}</p>${comments}`;
 }
 
 // --- "Results" tab ------------------------------------------------------------------------
@@ -436,6 +438,7 @@ function foldedSummary(q) {
   const distribution = [
     ...q.options.map((o) => `${o.id} ${r.distribution[o.id]}`),
     `${t("fold.abstentions")} ${r.abstentions}`,
+    `${t("fold.nonAnswers")} ${r.nonAnswers}`,
   ].join(" · ");
   const comments = r.comments.length
     ? `<span class="fold-comments">${t("fold.comments")}: ${r.comments.length}</span>`
@@ -451,7 +454,9 @@ function resultsBlock(step) {
   const questions = step.questions
     .map((q) => {
       const myChoice = q.myVote ? optionLabel(q, q.myVote) : null;
-      const vote = myChoice ? t("results.yourVote", { option: escapeHtml(myChoice) }) : t("results.noVote");
+      const vote = myChoice
+        ? t("results.yourVote", { option: escapeHtml(myChoice) })
+        : t(q.myAbstention ? "results.abstained" : "results.noVote");
       const open = unfoldedQuestions.has(q.number) ? "open" : "";
       return `<details class="question-result" data-fold="${q.number}" ${open}>${foldedSummary(q)}${questionResult(q)}<p class="counter">${vote}</p></details>`;
     })
@@ -491,14 +496,14 @@ function scoreboardHtml() {
       return `<tr>
         <td>${i + 1}</td><td>${escapeHtml(l.nickname)}${l.nickname === player()?.nickname ? ` ${t("scoreboard.me")}` : ""}</td>
         <td class="num"><strong>${l.total}</strong></td>
-        <td class="num">${l.stepGain ? `<span class="gain">+${l.stepGain}</span>` : ""}</td>
-        <td class="num">${s?.votes ?? 0}</td><td class="num">${s?.comments ?? 0}</td><td class="num">${s?.abstentions ?? 0}</td>
+        <td class="num">${l.stepGain ? `<span class="${l.stepGain > 0 ? "gain" : "penalty"}">${l.stepGain > 0 ? "+" : ""}${l.stepGain}</span>` : ""}</td>
+        <td class="num">${s?.votes ?? 0}</td><td class="num">${s?.comments ?? 0}</td><td class="num">${s?.abstentions ?? 0}</td><td class="num">${s?.nonAnswers ?? 0}</td>
       </tr>`;
     })
     .join("");
   return `<h2>${t("scoreboard.title")}</h2>
     <div class="scroll"><table><thead><tr><th>#</th><th>${t("scoreboard.player")}</th><th class="num">${t("scoreboard.points")}</th><th class="num">${t("scoreboard.step")}</th>
-    <th class="num">${t("scoreboard.votes")}</th><th class="num">${t("scoreboard.comments")}</th><th class="num">${t("scoreboard.abstentions")}</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+    <th class="num">${t("scoreboard.votes")}</th><th class="num">${t("scoreboard.comments")}</th><th class="num">${t("scoreboard.abstentions")}</th><th class="num">${t("scoreboard.nonAnswers")}</th></tr></thead><tbody>${rows}</tbody></table></div>`;
 }
 
 /** End-of-Session card: the Scoreboard (only if the server sent it, i.e. published) shown once, then the Summary. */
@@ -828,7 +833,7 @@ document.addEventListener("click", async (ev) => {
     return render();
   }
   if (d.abstain) {
-    await answer(d.abstain, { option: null });
+    await answer(d.abstain, { abstain: true });
     return refresh({ force: true });
   }
   if (target.id === "toggle-controls") {

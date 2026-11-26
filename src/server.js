@@ -163,8 +163,8 @@ export async function start({ port, dir, token, host = "0.0.0.0", playerUrls = [
   });
 
   app.put("/api/steps/:id/questions/:questionId/answer", (req, res) => {
-    const { player, option, comment } = req.body;
-    activeSession().answer(req.params.id, req.params.questionId, player, { option, comment });
+    const { player, option, abstain, comment } = req.body;
+    activeSession().answer(req.params.id, req.params.questionId, player, { option, abstain, comment });
     res.json(activeSession().viewFor(player));
   });
 

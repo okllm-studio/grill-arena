@@ -43,6 +43,7 @@ export class Session {
       if (!resume) throw new Refusal(409, `Nickname "${nickname}" already taken`);
       return { player: existing, created: false };
     }
+    if (this.ended) throw new Refusal(409, "Session ended");
     const player = { id: randomUUID(), nickname };
     this.players.push(player);
     return { player, created: true };

@@ -7,8 +7,22 @@ A grilling session run by Claude where several participants vote on the options 
 ### Flow
 
 **Session**:
-A complete grilling, from the first Step until no question is left open.
+A complete grilling, from the first Step until no question is left open. It is finished once Claude ends it; until then it can be shelved and reopened.
 _Avoid_: game, match
+
+**Session list**:
+The screen the Facilitator sees while no Session is loaded: every stored Session with its title, date, state and number of Steps. An unfinished Session can be reopened or deleted, a finished one consulted or deleted. A loaded Session is left only by shelving it (unfinished) or by going back to the Session list (finished).
+_Avoid_: history, archive
+
+**Reopening**:
+The Facilitator's act of loading an unfinished Session from the Session list to carry on from its last Step. A finished Session is never reopened: it is only consulted.
+
+**Consultation**:
+Loading a finished Session read-only from the Session list: the Summary, the Scoreboard and the results are shown to everyone, Players included, until the Facilitator goes back to the Session list.
+
+**Shelving**:
+The Facilitator's act of setting aside an unfinished Session, as a pause: it is unloaded, stays stored and can be reopened. Only the Facilitator can do it, at any time, after a confirmation. It is neither the closing of a Step nor the end of a Session.
+_Avoid_: closing the Session, leaving
 
 **Step**:
 One round of grilling: all the Questions asked at the same time, put to the vote, then closed.

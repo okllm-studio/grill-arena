@@ -90,12 +90,23 @@ let fetchCounter = 0;
 let pointerDown = false;
 let renderPending = false;
 
+/** Stored Sessions, newest first; null while a Session is loaded (or for Players). */
+let sessions = null;
+
+async function fetchSessions() {
+  const { ok, data } = await api("GET", "/api/sessions");
+  return ok ? data : null;
+}
+
 async function refresh({ force = false } = {}) {
   const counter = ++fetchCounter;
   const p = player();
   const { data } = await api("GET", p ? `/api/state?player=${encodeURIComponent(p.id)}` : "/api/state");
   if (counter !== fetchCounter) return; // a more recent fetch was started in the meantime
-  const serialized = JSON.stringify(data);
+  // Without a loaded Session, the Facilitator picks one from the stored Sessions.
+  sessions = token && !data.session ? await fetchSessions() : null;
+  if (counter !== fetchCounter) return;
+  const serialized = JSON.stringify([data, sessions]);
   // Question numbers restart at Q1 in a new Session: forget which ones were unfolded.
   if (data.session?.id !== state?.session?.id) unfoldedQuestions.clear();
   state = data;
@@ -276,9 +287,7 @@ function renderTabs() {
 function renderStep() {
   const session = state?.session;
   if (!session) {
-    el("content").innerHTML = isFacilitator()
-      ? ""
-      : `<div class="card">${t("step.notStarted")}</div>`;
+    el("content").innerHTML = isFacilitator() ? sessionList() : `<div class="card">${t("step.notStarted")}</div>`;
     return;
   }
   const s = state.step;
@@ -510,9 +519,39 @@ function scoreboardHtml() {
 }
 
 /** End-of-Session card: the Scoreboard (only if the server sent it, i.e. published) shown once, then the Summary. */
+/** The Session list: reopen an unfinished Session, consult a finished one, delete any. */
+function sessionList() {
+  if (!sessions) return "";
+  const rows = sessions
+    .map(
+      (x) => `<li><span><strong>${escapeHtml(x.title)}</strong>
+        <small>${t("sessions.started", { date: escapeHtml(new Date(x.startedAt).toLocaleString()) })} · ${plural(x.steps, "noun.Step")} · ${t(x.ended ? "sessions.finished" : "sessions.unfinished")}</small></span>
+        <span class="actions">
+          <button type="button" data-load="${x.id}">${t(x.ended ? "sessions.consult" : "sessions.reopen")}</button>
+          <button type="button" class="secondary" data-delete="${x.id}" data-title="${escapeHtml(x.title)}">${t("sessions.delete")}</button>
+        </span></li>`,
+    )
+    .join("");
+  return `<div class="card"><h2>${t("sessions.title")}</h2>
+    ${rows ? `<ul class="participant-list">${rows}</ul>` : `<p>${t("sessions.empty")}</p>`}</div>`;
+}
+
+/** What the Facilitator can do once the Session has ended. */
+function whatNow() {
+  if (!isFacilitator()) return "";
+  return `<div class="card"><h2>${t("end.whatNow")}</h2>
+    <p>${t("end.nextStep")}</p>
+    <div class="actions">
+      <button type="button" id="copy-summary">${t("end.copy")}</button>
+      <button type="button" class="secondary" id="download-summary">${t("end.download")}</button>
+      <button type="button" class="secondary" id="leave-session">${t("end.back")}</button>
+    </div></div>`;
+}
+
 function endCard() {
   return `<div class="card"><h2>${t("end.title")}</h2>
     ${state.scoreboard ? scoreboardHtml() : ""}</div>
+    ${whatNow()}
     ${state.session.summary ? `<article class="card body-text">${marked.parse(state.session.summary)}</article>` : ""}`;
 }
 
@@ -651,7 +690,12 @@ function renderFacilitator() {
            )
            .join("")}</ul>`
       : "";
-    content = prompt + setting + language + publication + participants;
+    const shelve = session.ended
+      ? ""
+      : `<h3>${t("facilitator.shelve")}</h3>
+         <p class="counter">${t("facilitator.shelveHint")}</p>
+         <div class="actions"><button type="button" class="secondary" id="shelve-session">${t("facilitator.shelve")}</button></div>`;
+    content = prompt + setting + language + publication + participants + shelve;
   }
 
   area.innerHTML = `<h2>${t("facilitator.title")}</h2>
@@ -670,6 +714,13 @@ async function savePrompt() {
   promptDraft = null;
   notify(t("notify.promptSaved"));
   await refresh({ force: true });
+}
+
+/** Session management (load, unload, delete): reserved to the Facilitator. */
+async function manageSessions(method, path) {
+  const { ok, data } = await api(method, path);
+  if (!ok) notify(data.error ?? t("notify.sessionRefused"));
+  return refresh({ force: true });
 }
 
 async function answer(questionId, body, options) {
@@ -855,6 +906,32 @@ document.addEventListener("click", async (ev) => {
     return render();
   }
   if (target.id === "save-prompt") return savePrompt();
+  if (d.load) return manageSessions("POST", `/api/sessions/${d.load}/load`);
+  if (d.delete) {
+    if (!confirm(t("sessions.confirmDelete", { title: d.title }))) return;
+    return manageSessions("DELETE", `/api/sessions/${d.delete}`);
+  }
+  if (target.id === "shelve-session") {
+    if (!confirm(t("facilitator.confirmShelve", { title: state.session.title }))) return;
+    tab = "step";
+    return manageSessions("POST", "/api/session/unload");
+  }
+  if (target.id === "leave-session") return manageSessions("POST", "/api/session/unload");
+  if (target.id === "copy-summary") {
+    try {
+      await navigator.clipboard.writeText(state.session.summary ?? "");
+      return notify(t("notify.summaryCopied"));
+    } catch {
+      return notify(t("notify.sessionRefused"));
+    }
+  }
+  if (target.id === "download-summary") {
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(new Blob([state.session.summary ?? ""], { type: "text/markdown" }));
+    link.download = `${(state.session.title ?? "summary").replace(/[^\w-]+/g, "-")}-summary.md`;
+    link.click();
+    return URL.revokeObjectURL(link.href);
+  }
   if (target.id === "publish-stats") {
     const { ok, data } = await api("POST", "/api/session/statistics", {});
     if (!ok) return notify(data.error ?? t("notify.publicationRefused"));

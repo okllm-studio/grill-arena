@@ -1,5 +1,5 @@
 // Storage: one JSON file per Session in a folder.
-import { mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 export function createStorage(dir) {
@@ -12,15 +12,26 @@ export function createStorage(dir) {
       renameSync(`${file}.tmp`, file);
     },
 
-    /** The unfinished Session started last, or null. Files that cannot be read or have an unknown shape are ignored. */
-    lastInProgress() {
-      return (
-        readdirSync(dir)
-          .filter((f) => f.endsWith(".json"))
-          .map((f) => readSession(join(dir, f)))
-          .filter((d) => d && !d.ended)
-          .sort((a, b) => b.startedAt - a.startedAt)[0] ?? null
-      );
+    /** Every readable stored Session, newest first. Files that cannot be read or have an unknown shape are ignored. */
+    list() {
+      return readdirSync(dir)
+        .filter((f) => f.endsWith(".json"))
+        .map((f) => readSession(join(dir, f)))
+        .filter(Boolean)
+        .sort((a, b) => b.startedAt - a.startedAt);
+    },
+
+    /** The stored Session with this identifier, or null. */
+    load(id) {
+      return this.list().find((data) => data.id === id) ?? null;
+    },
+
+    /** Deletes the file of the Session; false if there is none. */
+    remove(id) {
+      const found = this.load(id);
+      if (!found) return false;
+      rmSync(join(dir, `${id}.json`), { force: true });
+      return true;
     },
   };
 }

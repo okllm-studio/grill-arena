@@ -50,6 +50,26 @@ const claude = {
   end: () => request("POST", "/api/session/end", { token: TOKEN }),
 };
 
+const manager = {
+  list: (token = TOKEN) => request("GET", "/api/sessions", { token }),
+  load: (id, token = TOKEN) => request("POST", `/api/sessions/${id}/load`, { token }),
+  unload: (token = TOKEN) => request("POST", "/api/session/unload", { token }),
+  remove: (id, token = TOKEN) => request("DELETE", `/api/sessions/${id}`, { token }),
+};
+
+async function restart() {
+  await server.close();
+  server = await start({ port: 0, dir, token: TOKEN });
+}
+
+/** Restarts the server, then the Facilitator reopens the Session that was loaded. */
+async function restartAndReload(options = {}) {
+  const { id } = (await request("GET", "/api/state", { token: TOKEN })).body.session;
+  await server.close();
+  server = await start({ port: 0, dir, token: TOKEN, ...options });
+  assert.equal((await manager.load(id)).status, 200);
+}
+
 const facilitator = {
   /** The Facilitator's view: a Player's view, plus what is reserved to the Facilitator. */
   state: async (playerId) =>
@@ -676,8 +696,10 @@ test("after a restart, the Session resumes with its Players, its open Step and i
   const { body: s2 } = await claude.publishOpen(stepFixture(2));
   await alice.answer(s2.id, "q1-2", { option: "A", comment: "kept" });
 
-  await server.close();
-  server = await start({ port: 0, dir, token: TOKEN });
+  const { body: started } = await request("GET", "/api/state", { token: TOKEN });
+  await restart();
+  assert.equal((await request("GET", "/api/state")).body.session, null);
+  assert.equal((await manager.load(started.session.id)).status, 200);
 
   const state = await alice.state();
   assert.equal(state.session.title, "Arena");
@@ -698,9 +720,38 @@ test("starting a new Session archives the previous one without overwriting it", 
 
   assert.equal((await readdir(dir)).filter((f) => f.endsWith(".json")).length, 2);
 
-  await server.close();
-  server = await start({ port: 0, dir, token: TOKEN });
-  assert.equal((await request("GET", "/api/state")).body.session.title, "Second");
+  await restart();
+  assert.equal((await request("GET", "/api/state")).body.session, null);
+  assert.deepEqual((await manager.list()).body.map((x) => x.title), ["Second", "First"]);
+});
+
+test("the Session list shows each stored Session newest first, with its state, its Steps and which one is loaded", async () => {
+  await claude.startSession("First");
+  const { body: step } = await claude.publishOpen(stepFixture());
+  await facilitator.close(step.id);
+  await claude.end();
+  await claude.startSession("Second");
+
+  const { status, body } = await manager.list();
+  assert.equal(status, 200);
+  assert.deepEqual(
+    body.map(({ title, ended, steps, loaded }) => ({ title, ended, steps, loaded })),
+    [
+      { title: "Second", ended: false, steps: 0, loaded: true },
+      { title: "First", ended: true, steps: 1, loaded: false },
+    ],
+  );
+  assert.ok(body.every((x) => typeof x.id === "string" && typeof x.startedAt === "number"));
+
+  await restart();
+  assert.deepEqual((await manager.list()).body.map((x) => x.loaded), [false, false]);
+});
+
+test("a stored file that cannot be read is left out of the Session list", async () => {
+  await claude.startSession("Readable");
+  await writeFile(join(dir, "broken.json"), "{ not json");
+  await writeFile(join(dir, "strange.json"), JSON.stringify({ hello: "world" }));
+  assert.deepEqual((await manager.list()).body.map((x) => x.title), ["Readable"]);
 });
 
 test("the Session's initial prompt is visible to everyone and the Facilitator can edit it", async () => {
@@ -892,8 +943,7 @@ test("after a restart, an Abstention is kept and the Players present at the Open
   const late = await joinAs("late");
   void late;
 
-  await server.close();
-  server = await start({ port: 0, dir, token: TOKEN });
+  await restartAndReload();
 
   const [q1] = (await alice.state()).step.questions;
   assert.deepEqual([q1.myAbstention, q1.voters], [true, 1]);
@@ -908,6 +958,7 @@ test("a Session saved before Abstentions existed still loads: its missing answer
   const { body: step } = await claude.publishOpen(stepFixture());
   await alice.answer(step.id, "q1", { option: "A" });
 
+  const { id: savedId } = (await request("GET", "/api/state", { token: TOKEN })).body.session;
   await server.close();
   for (const file of (await readdir(dir)).filter((f) => f.endsWith(".json"))) {
     const data = JSON.parse(await readFile(join(dir, file), "utf8"));
@@ -918,6 +969,7 @@ test("a Session saved before Abstentions existed still loads: its missing answer
     await writeFile(join(dir, file), JSON.stringify(data));
   }
   server = await start({ port: 0, dir, token: TOKEN });
+  assert.equal((await manager.load(savedId)).status, 200);
 
   assert.equal((await alice.state()).step.questions[0].voters, 1);
   const { body } = await facilitator.close(step.id);
@@ -953,8 +1005,7 @@ test("Co-facilitators stay appointed after a server restart", async () => {
   await appoint(alice.id);
   await claude.publish(stepFixture());
 
-  await server.close();
-  server = await start({ port: 0, dir, token: TOKEN });
+  await restartAndReload();
   assert.equal((await alice.state()).coFacilitator, true);
 });
 
@@ -1321,7 +1372,7 @@ test("a Co-facilitator changes the language, a Player is refused", async () => {
 test("the language survives a server restart", async () => {
   await claude.startSession();
   await setLanguage("fr");
-  await restartWith();
+  await restartAndReload();
   assert.equal((await request("GET", "/api/state")).body.session.language, "fr");
 });
 
@@ -1356,4 +1407,160 @@ test("the shared catalogue is served to browsers and loads in Node without brows
   const { catalogues, t } = await import("../public/i18n.js");
   assert.ok(Object.keys(catalogues).length >= 2);
   assert.equal(typeof t("noun.abstention", {}, Object.keys(catalogues)[0]), "string");
+});
+
+// --- Session management -------------------------------------------------------
+
+const loadedId = async () => (await request("GET", "/api/state", { token: TOKEN })).body.session.id;
+
+test("a Session cannot be loaded while another one is loaded, and an unknown Session is not found", async () => {
+  await claude.startSession("First");
+  const first = await loadedId();
+  await restart();
+  await claude.startSession("Second");
+  assert.equal((await manager.load(first)).status, 409);
+  assert.equal((await request("GET", "/api/state")).body.session.title, "Second");
+
+  await manager.unload();
+  assert.equal((await manager.load("nobody")).status, 404);
+});
+
+test("a finished Session is consulted read-only: Players see its Summary and Scoreboard, nothing can be added", async () => {
+  await claude.startSession("Done");
+  const alice = await joinAs("alice");
+  const { body: step } = await claude.publishOpen(stepFixture());
+  await alice.answer(step.id, "q1", { option: "A" });
+  await facilitator.close(step.id);
+  const { body: end } = await claude.end();
+  const id = await loadedId();
+  await restart();
+
+  assert.equal((await manager.load(id)).status, 200);
+  const state = await alice.state();
+  assert.equal(state.session.ended, true);
+  assert.equal(state.session.summary, end.summary);
+  assert.deepEqual(state.scoreboard.map((r) => [r.nickname, r.total]), [["alice", 1]]);
+  assert.equal((await request("POST", "/api/players", { body: { nickname: "bob" } })).status, 409);
+  assert.equal((await claude.publish(stepFixture(2))).status, 409);
+});
+
+test("an unfinished Session is reopened where it stopped, and Players find their nickname again", async () => {
+  await claude.startSession("Paused");
+  const alice = await joinAs("alice");
+  const { body: step } = await claude.publishOpen(stepFixture());
+  await alice.answer(step.id, "q1", { option: "B", comment: "kept" });
+  const id = await loadedId();
+
+  assert.equal((await manager.unload()).status, 200);
+  assert.equal((await manager.load(id)).status, 200);
+
+  const [q1] = (await alice.state()).step.questions;
+  assert.deepEqual([q1.myVote, q1.myComment], ["B", "kept"]);
+  const resumed = await request("POST", "/api/players", { body: { nickname: "alice", resume: true } });
+  assert.equal(resumed.status, 200);
+  assert.equal(resumed.body.id, alice.id);
+});
+
+test("unloading a Session leaves none loaded, keeps it stored, and releases Claude's wait with a conflict", async () => {
+  await claude.startSession("Pausing");
+  const { body: step } = await claude.publishOpen(stepFixture());
+  const waiting = claude.result(step.id, { wait: true });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+
+  assert.equal((await manager.unload()).status, 200);
+  assert.equal((await waiting).status, 409);
+  assert.equal((await request("GET", "/api/state")).body.session, null);
+  assert.deepEqual((await manager.list()).body.map((x) => [x.title, x.loaded]), [["Pausing", false]]);
+  assert.equal((await request("POST", "/api/players", { body: { nickname: "alice" } })).status, 409);
+});
+
+test("a finished Session can be unloaded too", async () => {
+  await claude.startSession("Done");
+  await claude.end();
+  assert.equal((await manager.unload()).status, 200);
+  assert.equal((await request("GET", "/api/state")).body.session, null);
+});
+
+test("deleting a stored Session removes its file; the loaded Session and unknown ones cannot be deleted", async () => {
+  await claude.startSession("Old");
+  const old = await loadedId();
+  await claude.startSession("Current");
+  const files = async () => (await readdir(dir)).filter((f) => f.endsWith(".json"));
+  assert.equal((await files()).length, 2);
+
+  assert.equal((await manager.remove(await loadedId())).status, 409);
+  assert.equal((await manager.remove("nobody")).status, 404);
+  assert.equal((await manager.remove(old)).status, 200);
+
+  assert.deepEqual(await files(), [`${await loadedId()}.json`]);
+  assert.deepEqual((await manager.list()).body.map((x) => x.title), ["Current"]);
+});
+
+test("a deleted Session no longer comes back after a restart", async () => {
+  await claude.startSession("Gone");
+  const id = await loadedId();
+  await manager.unload();
+  assert.equal((await manager.remove(id)).status, 200);
+  await restart();
+  assert.deepEqual((await manager.list()).body, []);
+});
+
+test("the Session management routes are reserved to the Facilitator's token", async () => {
+  await claude.startSession("Guarded");
+  const alice = await joinAs("alice");
+  const bob = await joinAs("bob");
+  await appoint(bob.id);
+  const id = await loadedId();
+
+  for (const token of [null, "wrong"]) {
+    assert.equal((await manager.list(token)).status, 401);
+    assert.equal((await manager.load(id, token)).status, 401);
+    assert.equal((await manager.unload(token)).status, 401);
+    assert.equal((await manager.remove(id, token)).status, 401);
+  }
+  for (const player of [alice, bob]) {
+    const withPlayer = (method, path) => request(method, `${path}?player=${player.id}`);
+    assert.equal((await withPlayer("GET", "/api/sessions")).status, 403);
+    assert.equal((await withPlayer("POST", `/api/sessions/${id}/load`)).status, 403);
+    assert.equal((await withPlayer("POST", "/api/session/unload")).status, 403);
+    assert.equal((await withPlayer("DELETE", `/api/sessions/${id}`)).status, 403);
+  }
+  assert.equal((await request("GET", "/api/state")).body.session.title, "Guarded");
+});
+
+test("the Facilitator's state can wait until a Session is loaded, and answers at once when one is", async () => {
+  const wait = () => request("GET", "/api/state?wait=1", { token: TOKEN });
+
+  await claude.startSession("Ready");
+  assert.equal((await wait()).body.session.title, "Ready");
+
+  const id = await loadedId();
+  await manager.unload();
+  const waiting = wait();
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.equal((await manager.load(id)).status, 200);
+  assert.equal((await waiting).body.session.title, "Ready");
+
+  await manager.unload();
+  const created = wait();
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  await claude.startSession("Fresh");
+  assert.equal((await created).body.session.title, "Fresh");
+});
+
+test("without the wait flag, or without the token, the state never waits", async () => {
+  assert.deepEqual((await request("GET", "/api/state")).body, { session: null });
+  assert.deepEqual((await request("GET", "/api/state?wait=1")).body, { session: null });
+});
+
+test("Claude's creation of a Session still replaces the loaded one, which stays listed and can be reopened", async () => {
+  await claude.startSession("Interrupted");
+  const alice = await joinAs("alice");
+  const interrupted = await loadedId();
+  await claude.startSession("Replacement");
+  await manager.unload();
+
+  assert.deepEqual((await manager.list()).body.map((x) => [x.title, x.ended]), [["Replacement", false], ["Interrupted", false]]);
+  assert.equal((await manager.load(interrupted)).status, 200);
+  assert.equal((await alice.state()).session.title, "Interrupted");
 });

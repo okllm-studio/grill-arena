@@ -29,6 +29,10 @@ The domain terms (Session, Step, Opening, Question, Option, Consensus, Facilitat
 - **Scoreboard**: shown once, as a ranked list with no podium, to the Facilitator and Co-facilitators during the Session and to everyone once published or at the end.
 - **Interface language**: English or French, a setting of the Session shared by all pages. The Facilitator (or a Co-facilitator) switches it at any time from the Facilitator page (`PUT /api/session/language` with `{"language": "en"}` or `"fr"`; anything else is a 400); Players follow with their next refresh. The Summary is generated in that language.
 
+## Managing Sessions
+
+Every Session is stored in the Sessions folder. The server starts with none loaded: until Claude creates one (`/grilling-arena` with a subject) or the Facilitator picks one, the Facilitator page shows the Session list (title, date, number of Steps, finished or not). From it the Facilitator **reopens** an unfinished Session (carries on from its last Step), **consults** a finished one (read-only, visible to Players too) or **deletes** one (definitive, with confirmation). Once a Session is loaded the Facilitator leaves it only by **shelving** it (a pause, for an unfinished Session) or by going back to the list (from a finished Session, where a "What now?" block also copies or downloads the Summary). `/grilling-arena` without a subject waits for the Facilitator's choice, then carries on with that Session. API: `GET /api/sessions`, `POST /api/sessions/:id/load`, `POST /api/session/unload`, `DELETE /api/sessions/:id`, `GET /api/state?wait=1` (all with the Facilitator token).
+
 ## Origin and prerequisites
 
 grill-arena extends the skills of [Matt Pocock](https://github.com/mattpocock/skills): `/grilling-arena` is the multiplayer version of his `grill-with-docs` skill (`grilling` + `domain-modeling`). The `mattpocock-skills` Claude Code plugin is required:

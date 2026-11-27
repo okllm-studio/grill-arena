@@ -20,8 +20,8 @@ const clientFiles = {
  */
 export async function start({ port, dir, token, host = "0.0.0.0", playerUrls = [], language }) {
   const storage = createStorage(dir);
-  const inProgress = storage.lastInProgress();
-  let session = inProgress && Session.restore(inProgress);
+  /** The loaded Session: none at startup, the Facilitator picks one from the Session list. */
+  let session = null;
   /** stepId → long-poll responses waiting for the Step to close */
   const waiting = new Map();
   /** SSE streams opened by the pages */
@@ -78,16 +78,60 @@ export async function start({ port, dir, token, host = "0.0.0.0", playerUrls = [
     refuse(req, res);
   };
 
+  /** Facilitator state requests waiting for a Session to be loaded. */
+  const loadWaiters = new Set();
+  const loaded = (next) => {
+    session = next;
+    for (const answer of [...loadWaiters]) answer();
+  };
+
+  const releaseWaiting = (error) => {
+    for (const pending of [...waiting.values()].flatMap((set) => [...set])) pending.status(409).json({ error });
+    waiting.clear();
+  };
+
   app.post("/api/session", facilitatorOnly, (req, res) => {
     // guarantees the order of Sessions even if two start in the same millisecond
     const startedAt = Math.max(Date.now(), (session?.startedAt ?? 0) + 1);
     if (session) storage.save(session.toJSON());
-    for (const pending of [...waiting.values()].flatMap((set) => [...set])) {
-      pending.status(409).json({ error: "Session replaced" });
-    }
-    waiting.clear();
-    session = new Session({ title: req.body.title, prompt: req.body.prompt ?? "", startedAt, language });
+    releaseWaiting("Session replaced");
+    loaded(new Session({ title: req.body.title, prompt: req.body.prompt ?? "", startedAt, language }));
     res.status(201).json({ id: session.id });
+  });
+
+  app.get("/api/sessions", facilitatorOnly, (req, res) => {
+    res.json(
+      storage.list().map(({ id, title, startedAt, ended, steps }) => ({
+        id,
+        title,
+        startedAt,
+        ended: ended === true,
+        steps: steps.length,
+        loaded: session?.id === id,
+      })),
+    );
+  });
+
+  app.post("/api/sessions/:id/load", facilitatorOnly, (req, res) => {
+    if (session) throw new Refusal(409, "A Session is already loaded");
+    const data = storage.load(req.params.id);
+    if (!data) throw new Refusal(404, "Unknown Session");
+    loaded(Session.restore(data));
+    res.json({ id: session.id });
+  });
+
+  // Shelving an unfinished Session, or going back to the Session list from a finished one.
+  app.post("/api/session/unload", facilitatorOnly, (req, res) => {
+    storage.save(activeSession().toJSON());
+    releaseWaiting("Session unloaded");
+    session = null;
+    res.json({ unloaded: true });
+  });
+
+  app.delete("/api/sessions/:id", facilitatorOnly, (req, res) => {
+    if (session?.id === req.params.id) throw new Refusal(409, "The loaded Session cannot be deleted");
+    if (!storage.remove(req.params.id)) throw new Refusal(404, "Unknown Session");
+    res.json({ deleted: true });
   });
 
   app.put("/api/session/prompt", facilitatorOnly, (req, res) => {
@@ -169,6 +213,16 @@ export async function start({ port, dir, token, host = "0.0.0.0", playerUrls = [
   });
 
   app.get("/api/state", (req, res) => {
+    // The Facilitator's request with `wait=1` holds until a Session is loaded (Claude waiting for the Facilitator's choice).
+    if (!session && req.query.wait && validToken(req)) {
+      const answer = () => {
+        loadWaiters.delete(answer);
+        res.json(session.viewFor(undefined, { facilitator: true }));
+      };
+      loadWaiters.add(answer);
+      res.on("close", () => loadWaiters.delete(answer));
+      return;
+    }
     res.json(session ? session.viewFor(req.query.player, { facilitator: validToken(req) }) : { session: null });
   });
 

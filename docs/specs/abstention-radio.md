@@ -60,5 +60,4 @@ On the Player's page, the Abstention becomes one more radio in the same group as
 
 ## Further Notes
 
-- The glossary already states that the Abstention is offered next to the Options without being one.
-- The working document of the grilling Session (`abstention-radio-summary.md`) is superseded by this spec and can be deleted.
+- The glossary states that the Abstention is offered next to the Options without being one: it has no letter and is never Recommended.

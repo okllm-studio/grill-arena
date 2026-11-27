@@ -349,7 +349,7 @@ function renderRules() {
 
 function questionCard(step, q) {
   const body = `<div class="body-text">${withReferences(marked.parse(q.body ?? ""))}</div>`;
-  const title = `<h2>${heading(q)}</h2>`;
+  const title = `<h2 id="title-${q.id}">${heading(q)}</h2>`;
   if (step.state === "closed") {
     const unsent = drafts.get(q.id);
     const lost =
@@ -368,7 +368,7 @@ function questionCard(step, q) {
     )
     .join("");
   const abstention = `<label class="option abstention ${q.myAbstention ? "chosen" : ""}">
-        <input type="radio" name="vote-${q.id}" data-question="${q.id}" data-abstain-radio value="" ${q.myAbstention ? "checked" : ""} />
+        <input type="radio" name="vote-${q.id}" data-question="${q.id}" data-answer="abstain" value="" ${q.myAbstention ? "checked" : ""} />
         <span>${t("question.abstain")}</span>
       </label>`;
   const comment = drafts.get(q.id) ?? q.myComment;
@@ -377,7 +377,7 @@ function questionCard(step, q) {
     : "";
   return `<article class="card">
     ${title}${body}
-    <div class="options" role="radiogroup" aria-label="${escapeHtml(q.title)}">${options}${abstention}</div>
+    <div class="options" role="radiogroup" aria-labelledby="title-${q.id}">${options}${abstention}</div>
     <div class="actions">
       <span class="counter">${t("question.voted", { voters: q.voters, players: state.players })}</span>
     </div>
@@ -750,7 +750,7 @@ document.addEventListener("submit", async (ev) => {
 document.addEventListener("change", async (ev) => {
   const q = ev.target.dataset.question;
   if (q) {
-    await answer(q, "abstainRadio" in ev.target.dataset ? { abstain: true } : { option: ev.target.value });
+    await answer(q, ev.target.dataset.answer === "abstain" ? { abstain: true } : { option: ev.target.value });
     return refresh({ force: true });
   }
   if (ev.target.id === "language") {

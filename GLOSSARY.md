@@ -77,7 +77,7 @@ _Avoid_: deputy, moderator
 A Player's choice of an Option for a Question; it stays hidden until the Step closes. An Abstention is not a Vote.
 
 **Abstention**:
-A Player's explicit answer to a Question that they decline to vote on, because they feel poorly placed to answer and would only bias the result. It is an act: it counts as a response, but not in the result, the Consensus or the Points; it earns nothing and costs nothing. It can be changed to an Option, and an Option to an Abstention, until the Step closes.
+A Player's explicit answer to a Question that they decline to vote on, because they feel poorly placed to answer and would only bias the result. It is an act: it counts as a response, but not in the result, the Consensus or the Points; it earns nothing and costs nothing. It can be changed to an Option, and an Option to an Abstention, until the Step closes. It is offered next to the Options but is not one of them: Claude does not propose it, it has no letter and is never Recommended.
 
 **Non-answer**:
 A Player present when a Step opened who, at its closing, has answered a Question neither with a Vote nor with an Abstention. It has no effect on the result or the Consensus, but it costs a Penalty.

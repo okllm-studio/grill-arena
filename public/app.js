@@ -367,15 +367,18 @@ function questionCard(step, q) {
       </label>`,
     )
     .join("");
+  const abstention = `<label class="option abstention ${q.myAbstention ? "chosen" : ""}">
+        <input type="radio" name="vote-${q.id}" data-question="${q.id}" data-abstain-radio value="" ${q.myAbstention ? "checked" : ""} />
+        <span>${t("question.abstain")}</span>
+      </label>`;
   const comment = drafts.get(q.id) ?? q.myComment;
   const distribution = q.distribution
     ? `<p class="counter">${t("question.distribution", { distribution: q.options.map((o) => `${escapeHtml(withLetter(o))} ${q.distribution[o.id]}`).join(" · ") })}</p>`
     : "";
   return `<article class="card">
     ${title}${body}
-    <div class="options">${options}</div>
+    <div class="options" role="radiogroup" aria-label="${escapeHtml(q.title)}">${options}${abstention}</div>
     <div class="actions">
-      <button type="button" class="secondary ${q.myAbstention ? "chosen" : ""}" data-abstain="${q.id}" aria-pressed="${q.myAbstention}">${t("question.abstain")}</button>
       <span class="counter">${t("question.voted", { voters: q.voters, players: state.players })}</span>
     </div>
     ${distribution}
@@ -747,7 +750,7 @@ document.addEventListener("submit", async (ev) => {
 document.addEventListener("change", async (ev) => {
   const q = ev.target.dataset.question;
   if (q) {
-    await answer(q, { option: ev.target.value });
+    await answer(q, "abstainRadio" in ev.target.dataset ? { abstain: true } : { option: ev.target.value });
     return refresh({ force: true });
   }
   if (ev.target.id === "language") {
@@ -831,10 +834,6 @@ document.addEventListener("click", async (ev) => {
   if (d.tab) {
     tab = d.tab;
     return render();
-  }
-  if (d.abstain) {
-    await answer(d.abstain, { abstain: true });
-    return refresh({ force: true });
   }
   if (target.id === "toggle-controls") {
     controlsFolded = !controlsFolded;

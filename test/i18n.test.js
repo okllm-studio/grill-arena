@@ -52,3 +52,8 @@ test("plural picks the singular or plural form of a noun", () => {
   assert.equal(plural(0, "noun.Point"), "0 Points");
   assert.equal(plural(2, "noun.abstention"), "2 abstentions");
 });
+
+test("the Abstention radio is labelled as a first-person answer, in both languages", () => {
+  assert.equal(t("question.abstain"), "I abstain");
+  assert.equal(t("question.abstain", {}, "fr"), "Je m’abstiens");
+});

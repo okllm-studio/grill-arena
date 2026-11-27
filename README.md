@@ -47,7 +47,7 @@ Without the plugin, a session still runs but produces no glossary and no ADRs.
 4. Open the Facilitator URL printed at startup (with `?token=`), and share the Players URL (or the QR code on the Facilitator page).
 5. In Claude Code, run `/grilling-arena` with the subject of the session.
 
-Install the skill once with `ln -s "$PWD/skill/grilling-arena" ~/.claude/skills/grilling-arena`. Tests: `npm test`.
+Install the skill once with `make install-skill` (symlink to the repository: a `git pull` then updates it, and a new Claude Code session picks it up). Tests: `npm test`.
 
 Details (local network, tunnel, variables, security) follow.
 
